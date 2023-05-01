@@ -1,0 +1,105 @@
+---
+title: "Processing of Fetal and Adult GPC Bulk RNA-seq"
+author: "John Mariani"
+date: "3/6/2023"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+
+```
+
+## Load in Libraries
+
+```{r}
+library(readr)
+library(tximport)
+library(biomaRt)
+library(DESeq2)
+source(file = "Scripts/Helper_Functions.R")
+
+
+```
+
+##Read in RSEM gene output
+
+```{r}
+temp = list.files(path = "data_for_import/genes", pattern="genes.results")
+temp <- temp[c(1:3,10:29)]
+
+names(temp) <- substr(temp,1,nchar(temp)-19)
+
+
+txi.rsem <- tximport(paste0("data_for_import/genes/",temp), type = "rsem")
+
+for(i in 1:3){
+  colnames(txi.rsem[[i]]) <- names(temp)
+}
+
+```
+
+## Grab Ensembl 95 Gene annotations from biomaRt unless you've already done so
+
+```{r}
+
+filename="data_for_import/ensemblGeneList.csv"
+if(file.exists(filename)){
+  ensemblGeneListH <- read.csv(filename)} else{
+    marth <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = 'http://jan2019.archive.ensembl.org/', ensemblRedirect = T)
+    ensemblGeneListH <- getBM(attributes = c("ensembl_gene_id","external_gene_name", "gene_biotype", "description"), filters = "ensembl_gene_id",values = row.names(txi.rsem$counts), mart = marth)
+    write.csv(ensemblGeneListH, filename, row.names = F)
+  }
+
+```
+
+## Read in sample information
+
+```{r}
+
+sampleTableFull <- read.csv("data_for_import/sampleTableFull.csv")
+
+
+```
+
+# Preprocessing
+```{r}
+
+
+txi.rsem$length[txi.rsem$length == 0] <- 1
+
+
+#Annotate the abundance dataframe
+TPM <- merge(txi.rsem$abundance, ensemblGeneListH,by.x=0,by.y="ensembl_gene_id")
+write.table(TPM, "output/TPM.txt", quote = F, row.names = F, sep = "\t")
+
+
+
+lowTPMfull <- data.frame(row.names = ensemblGeneListH$ensembl_gene_id)
+
+for(i in unique(sampleTableFull$line)){
+  lowTPMfull[,i] <- groupMedian(txi.rsem$abundance, "line", i, sampleTableFull)
+}
+lowTPMfull$external_gene_name <- ensemblGeneListH$external_gene_name
+
+tpmCutoff <- 1
+highTPM<- lowTPMfull[apply(lowTPMfull[,1:ncol(lowTPMfull)-1], 1, max)>tpmCutoff, ]
+
+
+
+```
+
+##Save data for other scripts
+```{r}
+saveRDS(txi.rsem, file = "RDS/txi.rsem.rds")
+saveRDS(highTPM, file = "RDS/highTPM.rds")
+
+```
+
+```{r}
+sessionInfo()
+
+```
+

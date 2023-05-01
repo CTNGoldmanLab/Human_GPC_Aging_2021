@@ -1,0 +1,390 @@
+---
+title: "Differential Expression Analysis of Adult vs Fetal hGPC miRNAs"
+author: "John Mariani"
+date: "03/06/23"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+```{r}
+source("Scripts/Helper_Functions.R")
+library(limma)
+library(pd.mirna.3.0)
+library(miRBaseConverter)
+library(miRNAtap)
+library(tidyr)
+library(dplyr)
+library(plyr)
+library(trqwe)
+library(xlsx)
+library(ggplot2)
+library(ggfortify)
+library(ggrepel)
+library(patchwork)
+
+```
+
+## Load 
+```{r}
+de_intersect <- read.delim("output/de_Adult_vs_Fetal_Intersect.txt")
+supTable3a <- read.xlsx("Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Adult vs Fetal hGPC DE")
+adultRepressorNetwork <- read.table("output/adultRepressorNetwork.txt", header = T)
+adultActivatorNetwork <- read.table("output/adultActivatorNetwork.txt", header = T)
+fetalRepressorNetwork <- read.table("output/fetalRepressorNetwork.txt", header = T)
+fetalActivatorNetwork <-  read.table("output/fetalActivatorNetwork.txt", header = T)
+
+activators <- c("MYC", "NFIB", "STAT3", "HMGA2", "TEAD2")
+
+
+```
+
+## Load data and conduct differential expression with limma
+```{r}
+#Function used throughout
+
+dataFolder <- "data_for_import/miRNA/"
+
+annotation <- read.csv("data_for_import/miRNA-3_0-st-v1.annotations.201405132.csv")
+
+
+#Read in and run RMA on CEL files
+fns <- list.celfiles(path = dataFolder)
+fns
+Data <- read.celfiles(filenames=paste0(dataFolder,fns))
+eset <- oligo::rma(Data)
+
+edata <- data.frame(exprs(eset))
+
+humanMirAnnotation <- annotation[annotation$Species.Scientific.Name == "Homo sapiens" & annotation$Sequence.Type == "miRNA",]
+
+
+# Filter on list of human mir probes
+edata_mir <- edata[row.names(edata) %in% humanMirAnnotation$Probe.Set.ID,]
+
+mirData <- data.frame(sample = names(edata_mir), group = c(rep("Fetal",4), rep("Adult",4)))
+
+
+design <- model.matrix(~0+group, mirData)
+colnames(design) <- make.names(colnames(design))
+
+fitV <- lmFit(edata_mir, design)
+fitV2 <- eBayes(fitV)
+colnames(design) 
+
+cont.matrix <- makeContrasts(comparison = groupAdult - groupFetal,
+                             levels=design)
+
+fitV2 <- contrasts.fit(fitV2, cont.matrix)
+fitV2 <- eBayes(fitV2)
+
+mirFetalAdultAll <- topTable(fitV2, coef = 1,number = 1000000000, p.value = 0.01)
+
+
+humanMirAnnotationDE <- humanMirAnnotation[humanMirAnnotation$Probe.Set.ID %in% row.names(mirFetalAdultAll),]
+humanMirAnnotationDE[,12:13] <- miRNA_AccessionToName(humanMirAnnotationDE$Accession,targetVersion = "v22")
+
+#Fails to find hsa-miR-3656 appropriately so is filled in manually
+humanMirAnnotationDE[is.na(humanMirAnnotationDE$TargetName),]$TargetName <- "hsa-miR-3656"
+humanMirAnnotationDE$mirName <- gsub(humanMirAnnotationDE$TargetName, pattern = "hsa-", replacement = "")
+
+mirFetalAdultAll <- merge(mirFetalAdultAll,humanMirAnnotationDE, by.x=0,by.y=1)
+
+### Make Sup Table 5a
+supTable5a <- mirFetalAdultAll[,c(8:10,2,6)]
+names(supTable5a) <- c("Probe_Set_Name", "Accession", "Transcript_ID_Array_Design", "Log2FC_Adult_vs_Fetal_GPC", "Adj_P_Val")
+supTable5a <- supTable5a[order(supTable5a$Adj_P_Val, decreasing = F),]
+write.xlsx(supTable5a, file = "Extended Data Tables/Extended Data Table 5 - Adult vs Fetal miRNA Microarray.xlsx", sheetName = "DE Adult vs Fetal GPC miRNAs", row.names = F, append = T)
+
+
+```
+
+## Find miRNA targets using miRNAtap
+
+```{r}
+
+humanMirsDE <- setNames(data.frame(matrix(ncol = 4, nrow = 0)), c("rank_product", "rank_final", "mir", "entrez"))
+for(i in 1:length(mirFetalAdultAll$mirName)){
+  tryCatch({
+    #print(mirFetalAdultAll$mirName[i])
+    temp <- as.data.frame(getPredictedTargets(as.character(mirFetalAdultAll$mirName[i]), species = 'hsa',method = 'geom', min_src = 2))
+    temp$mir <- as.character(mirFetalAdultAll$mirName[i])
+    temp$entrez <- row.names(temp)
+    temp <- temp[,c("rank_product", "rank_final", "mir", "entrez")]
+    humanMirsDE <- rbind(humanMirsDE, temp)
+  }, error=function(e){})
+}
+
+table(mirFetalAdultAll$logFC > 0)
+
+
+
+mirPCA <- autoplot(prcomp(t(edata_mir)), data = mirData, size = 1) + geom_point(shape = 21, size = 5, aes(fill =  mirData$group)) + theme_bw() + ylim(-.8,.9) + theme(legend.position = "bottom", legend.direction = "horizontal") + scale_fill_manual(values = c("#C40000", "#00008B"))
+
+mirPCA
+#write.table(mirFetalAdult, "output/de_mirFetalAdultAll.txt", sep ="\t", row.names = F, quote = F)
+
+
+```
+
+## Determine proper direction miRs
+```{r}
+
+filename="data_for_import/ensembl_miR_list.csv"
+if(file.exists(filename)){
+  ensemblGeneListMir <- read.csv(filename)} else{
+    marth <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = 'http://jan2019.archive.ensembl.org/', ensemblRedirect = T)
+    ensemblGeneListMir <- getBM(attributes = c("entrezgene", "external_gene_name", "gene_biotype", "description"), filters = "entrezgene",unique(row.names(humanMirsDE)), mart = marth)
+    write.csv(ensemblGeneListMir, filename, row.names = F)
+  } 
+
+nrow(humanMirsDE[unique(humanMirsDE$entrez),])
+
+humanMirsLabeled <- merge(humanMirsDE, ensemblGeneListMir, by.x = "entrez", by.y = "entrezgene")
+
+
+
+
+#### 
+mirFetalAdultLabeled <- merge(mirFetalAdultAll, humanMirsDE, by.x = 20, by.y = 3)
+mirFetalAdultLabeled <- merge(mirFetalAdultLabeled, ensemblGeneListMir, by.x = "entrez", by.y = "entrezgene")
+
+adult_vs_fetal_mir <- de_intersect
+adult_vs_fetal_mir <- adult_vs_fetal_mir[,c(1,3,7,8,9,10)]
+names(adult_vs_fetal_mir) <- c("ensembl_id", "a2b5_FC", "a2b5_padj", "external_gene_name", "gene_biotype", "description")
+
+adult_vs_fetal_mir <- merge(adult_vs_fetal_mir, mirFetalAdultLabeled, by.x = "external_gene_name", by.y = "external_gene_name")
+adult_vs_fetal_mir$X <- NULL
+adult_vs_fetal_mir <- adult_vs_fetal_mir[!duplicated(adult_vs_fetal_mir),]
+
+
+mirDownGeneUpFinal<- adult_vs_fetal_mir[adult_vs_fetal_mir$a2b5_FC > 0 & adult_vs_fetal_mir$logFC < 0,]
+mirUpGeneDownFinal<- adult_vs_fetal_mir[adult_vs_fetal_mir$a2b5_FC< 0 & adult_vs_fetal_mir$logFC > 0,]
+
+mirProperDirection <- rbind(mirDownGeneUpFinal,mirUpGeneDownFinal)
+
+
+### Make Sup Table 5b
+supTable5b <- mirProperDirection
+supTable5b <- supTable5b[,c(8,10,1,3)]
+names(supTable5b) <- c("miR_Name", "miR_Log2FC_Adult_vs_Fetal_GPC", "External_Gene_Name", "Target_Gene_Log2FC_Adult_vs_Fetal_A2B5_GPC")
+write.xlsx(supTable5b, file = "Extended Data Tables/Extended Data Table 5 - Adult vs Fetal miRNA microarray.xlsx", sheetName = "Predicted miRNA targets", row.names = F, append = T)
+
+```
+
+## Make miRNA Dot Plot
+```{r}
+
+mirDotPlot <- mirProperDirection %>%
+  group_by(mirName) %>%
+  dplyr::summarise(logFCmean = mean(a2b5_FC,na.rm = TRUE), mirLogFC = mean(logFC), n = n())
+
+mirDotPlotFetal <- mirDotPlot[mirDotPlot$mirLogFC < 0,]
+mirDotPlotAdult <- mirDotPlot[mirDotPlot$mirLogFC > 0,]
+
+mean(mirDotPlotFetal$n)
+mean(mirDotPlotAdult$n)
+
+sd(mirDotPlotFetal$n)
+sd(mirDotPlotAdult$n)
+
+
+
+signif(length(unique(mirDownGeneUpFinal$external_gene_name)) / length(de_intersect[de_intersect$log2FoldChange > 0,]$external_gene_name)*100,3)
+
+signif(length(unique(mirUpGeneDownFinal$external_gene_name)) / length(de_intersect[de_intersect$log2FoldChange < 0,]$external_gene_name)*100, 3)
+
+
+
+length(unique(mirUpGeneDownFinal$external_gene_name))
+
+
+miRinteresting <- c("miR-9-3p", "miR-9-5p", "miR-193b-3p", "miR-338-5p", "miR-24-3p", "miR-193a-5p", "miR-31-5p", "miR-584-5p", "miR-330-3p", "miR-409-3p", "miR-379-5p", "miR-432-5p", "miR-219a-2-3p")
+
+mirDotPlot$label <- ""
+mirDotPlot[mirDotPlot$mirName %in% miRinteresting,]$label <- mirDotPlot[mirDotPlot$mirName %in% miRinteresting,]$mirName
+
+
+
+mirGGdotPlot <- ggplot(mirDotPlot, aes(y = logFCmean, x = mirLogFC, label = label)) + geom_point(shape = 21, aes(fill = mirLogFC, stroke = 1, size = n),  alpha = 0.5) +  scale_size(range = c(0.5, 12)) + theme_bw() + geom_text_repel() +
+  scale_fill_gradient2(midpoint = 0, low = "#00008B", mid = "lightgrey", high = "#C40000", space = "Lab", guide = guide_colourbar(direction = "horizontal", title = "Adult vs. Fetal miRNA log2FC", title.position = "top")) + theme(legend.position = "bottom") + xlab("miRNA Log2FC") + ylab("Average Predicted Target Log2FC")
+
+
+mirGGdotPlot
+```
+### miR HM
+```{r}
+mirHM <- edata_mir %>% set_rownames(row.names(.))  %>%
+  as_tibble(rownames = "row") %>%
+  pivot_longer(-row, names_to = "Sample", values_to = "Intensity")
+
+
+#interestingAFmiRtargets <- mirProperDirection[mirProperDirection$external_gene_name %in% afHMgenes,]
+
+mirHM <- mirHM[mirHM$row %in% mirFetalAdultAll$Row.names, ]
+
+mirHM$group <- mapvalues(mirHM$Sample, mirData$sample, as.character(mirData$group))
+
+mirBar <- mirFetalAdultAll
+mirBar$logFC <- as.numeric(mirBar$logFC)
+mirBar$Row.names <- as.factor(mirBar$Row.names)
+mirBar$direction <- "Fetal"
+mirBar[mirBar$logFC > 0,]$direction <- "Adult"
+
+
+#Grab SE from limma
+mirSE <- fitV2$stdev.unscaled * fitV2$sigma
+colnames(mirSE) <- "StandardError"
+mirBar <- merge(mirBar, mirSE, by.x = "Row.names", by.y = 0)
+mirBar <- mirBar[order(mirBar$logFC),]
+
+mirBar$shortName <- gsub("hsa-", "", mirBar$Transcript.ID.Array.Design.)
+mirBar$shortName <- factor(mirBar$shortName, levels = mirBar$shortName)
+mirHM$row <- factor(mirHM$row, levels = mirBar$Row.names)
+
+
+
+
+m1 <- ggplot(mirHM, aes(row, Sample)) + theme_bw() + geom_tile(aes(fill = mirHM$Intensity)) + theme(legend.position = "bottom", legend.direction = "horizontal", axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())  + scale_fill_gradientn(colours = c("#009900","#fffcbd","#ff2020")) + facet_grid(vars(group),scales = "free", space = "free", switch = "y") + scale_y_discrete(expand = c(0,0))
+
+m2 <- ggplot(mirBar, aes(x = shortName, y = logFC, fill = direction)) + 
+   geom_errorbar(aes(ymin=logFC-StandardError, ymax=logFC+StandardError), width=.2,
+                 position=position_dodge(.9)) +
+  geom_col(colour = "black") + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), axis.title.x = element_blank(), legend.position = "none") + scale_fill_manual(values = c("#C40000", "#00008B"))
+
+
+m2
+
+(((mirPCA /mirGGdotPlot) + plot_layout(heights = c(1,1.75))) | (m2 / m1)) + plot_layout(widths = c(1,2))
+#ggsave("panels/mirSignaling.pdf", units = "in", dpi = 300, width = 16, height = 8, device = NULL)
+
+
+
+```
+## Make miRNA Network
+```{r}
+miRsCurated <- read.csv("data_for_import/miRNAtap_Curated_Network.csv")
+
+mirAdultEdges <- mirProperDirection[mirProperDirection$mirName %in% miRsCurated$Adult_miR_Network & mirProperDirection$external_gene_name %in% miRsCurated$Adult_miR_Network,]
+
+mirAdultEdges <- mirAdultEdges[,c(8,1)]
+
+mirFetalEdges <- mirProperDirection[mirProperDirection$mirName %in% miRsCurated$Fetal_miR_Network & mirProperDirection$external_gene_name %in% miRsCurated$Fetal_miR_Network,]
+
+mirFetalEdges <- mirFetalEdges[,c(8,1)]
+
+mirFetalEdges <- mirFetalEdges[!duplicated(mirFetalEdges[, c("mirName", "external_gene_name")]),]
+
+mirAdultEdges <- mirAdultEdges[!duplicated(mirAdultEdges[, c("mirName", "external_gene_name")]),]
+
+mirAdultNodes <- data.frame(node = unique(c(mirAdultEdges$mirName, mirAdultEdges$external_gene_name)))
+mirFetalNodes <- data.frame(node = unique(c(mirFetalEdges$mirName, mirFetalEdges$external_gene_name)))
+
+mirAdultNodes$type <- ifelse(mirAdultNodes$node %in% mirFetalAdultLabeled$mirName, "miRNA", "Gene Target")
+mirFetalNodes$type <- ifelse(mirFetalNodes$node %in% mirFetalAdultLabeled$mirName, "miRNA", "Gene Target")
+
+mirAdultNodes$enriched <- ifelse(mirAdultNodes$node %in% mirFetalAdultLabeled$mirName, "Adult", "Fetal")
+mirFetalNodes$enriched <- ifelse(mirFetalNodes$node %in% mirFetalAdultLabeled$mirName, "Fetal", "Adult")
+
+write.csv(mirAdultEdges, "output/mirFetalEdges.csv", quote = F, row.names = F)
+write.csv(mirFetalEdges, "output/mirAdultEdges.csv", quote = F, row.names = F)
+write.csv(mirAdultNodes, "output/mirAdultNodes.csv", quote = F, row.names = F)
+write.csv(mirFetalNodes, "output/mirFetalNodes.csv", quote = F, row.names = F)
+
+
+
+```
+
+
+
+### TrasnmiR
+```{r}
+
+TransmiR <- read.delim("data_for_import/transmiR.tsv", sep = "\t", header = F)
+humanMirAnnotationDE$strippedName <- gsub(x = humanMirAnnotationDE$TargetName, pattern = "-5p", replacement = "")
+humanMirAnnotationDE$strippedName <- gsub(x = humanMirAnnotationDE$strippedName, pattern = "-3p", replacement = "")
+humanMirAnnotationDE$strippedNameLower <- tolower(humanMirAnnotationDE$strippedName)
+
+
+TransmiRDE <- TransmiR[TransmiR$V2 %in% tolower(humanMirAnnotationDE$strippedName),]
+leftout <- humanMirAnnotationDE[tolower(humanMirAnnotationDE$strippedName) %not in% TransmiR$V2,]
+
+
+### hsa-miR-3656 is not in the db.
+### hsa-miR-378d can be in two different loci
+
+TransmiRDE <- TransmiRDE[TransmiRDE$V1 %in% de_intersect$external_gene_name,]
+unique(TransmiRDE$V1)
+TransmirDEcollapsed <- TransmiRDE[,1:2]
+TransmirDEcollapsed <- TransmirDEcollapsed[!duplicated(TransmirDEcollapsed),]
+TransmirDEcollapsed <- merge(TransmirDEcollapsed, humanMirAnnotationDE, by.x = "V2", by.y = "strippedNameLower")
+TransmirDEcollapsed <- merge(TransmirDEcollapsed, mirFetalAdultAll, by.x = "mirName", by.y = "mirName")
+TransmirDEcollapsed <- merge(TransmirDEcollapsed, de_intersect, by.x = "V1", by.y = "external_gene_name")
+TransmirDEcollapsed <- TransmirDEcollapsed[,c("mirName", "V1", "logFC", "log2FoldChange")]
+TransmirDEcollapsed <- TransmirDEcollapsed[order(TransmirDEcollapsed$logFC, decreasing = F),]
+TransmirDEcollapsed$mirName <- factor(TransmirDEcollapsed$mirName, levels = unique(TransmirDEcollapsed$mirName))
+TransmirDEcollapsed$dotColor <- ifelse(TransmirDEcollapsed$log2FoldChange < 0, "Fetal", "Adult")
+TransmirLabelColor <- ifelse(TransmirDEcollapsed[!duplicated(TransmirDEcollapsed$mirName),]$logFC < 0,  "#00008B","#C40000")
+
+### Sup Table 5c
+supTable5c <- TransmirDEcollapsed[,c(1:3)]
+supTable5c <- merge(supTable5c, supTable3a, by.x = 2, by.y = "External_Gene_Name")
+supTable5c <- supTable5c[,c(2,1,3,5,7)]
+names(supTable5c)[1:3] <- c("mirName", "External_Gene_Name", "mir_Log2FC")
+write.xlsx(supTable5c, file = "Extended Data Tables/Extended Data Table 5 - Adult vs Fetal miRNA microarray.xlsx", sheetName = "TransmiR Predictions", row.names = F, append = T)
+```
+
+## Plot TF-miRNA pairs
+```{r}
+
+ggplot(TransmirDEcollapsed, aes(x=mirName, y=log2FoldChange)) + geom_violin(trim=TRUE) +  geom_jitter(aes(color = dotColor), shape=16, position=position_jitter(0.2)) + theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, color = TransmirLabelColor)) + scale_color_manual(values = c("#C40000", "#00008B")) + xlab("miR Name") + ylab("Log2FC of Upstream TF")
+
+#ggsave("../Panels/transmiRTop.pdf", width = 10, height = 3)
+
+```
+
+
+
+## Make Transmir Network
+```{r}
+
+humanMirAnnotationDEup <- humanMirAnnotationDE[humanMirAnnotationDE$Transcript.ID.Array.Design. %in% mirFetalAdultAll[mirFetalAdultAll$logFC > 0,]$Transcript.ID.Array.Design.,]
+
+humanMirAnnotationDEdown <- humanMirAnnotationDE[humanMirAnnotationDE$Transcript.ID.Array.Design. %in% mirFetalAdultAll[mirFetalAdultAll$logFC < 0,]$Transcript.ID.Array.Design.,]
+
+mirAdultRepressors <- TransmirDEcollapsed[TransmirDEcollapsed$mirName %in% humanMirAnnotationDEdown$mirName & TransmirDEcollapsed$V1 %in% adultRepressorNetwork$Source,]
+mirAdultRepressors$type <- "Adult Repressor"
+mirFetalActivators <- TransmirDEcollapsed[TransmirDEcollapsed$mirName %in% humanMirAnnotationDEdown$mirName  & TransmirDEcollapsed$V1 %in% fetalActivatorNetwork$Source,]
+mirFetalActivators$type <- "Fetal Activator"
+mirFetalRepressors <- TransmirDEcollapsed[TransmirDEcollapsed$mirName %in% humanMirAnnotationDEup$mirName  & TransmirDEcollapsed$V1 %in% fetalRepressorNetwork$Source,]
+mirFetalRepressors$type <- "Fetal Repressor"
+mirAdultActivators <- TransmirDEcollapsed[TransmirDEcollapsed$mirName %in% humanMirAnnotationDEup$mirName  & TransmirDEcollapsed$V1 %in% adultActivatorNetwork$Source,]
+mirAdultActivators$type <- "Adult Activator"
+
+
+
+mirTFedgesFetalMiRs <- rbind(mirAdultRepressors, mirFetalActivators)
+#write.table(mirTFedgesFetalMiRs, "output/mirTFedgesFetalMiRs.txt", sep = "\t", quote = F, row.names = F)
+
+mirTFedgesAdultMiRs <- rbind(mirFetalRepressors, mirAdultActivators)
+#write.table(mirTFedgesAdultMiRs, "output/mirTFedgesAdultMiRs.txt", sep = "\t", quote = F, row.names = F)
+
+
+```
+
+
+
+```{r}
+
+sessionInfo()
+
+```
+
+
+

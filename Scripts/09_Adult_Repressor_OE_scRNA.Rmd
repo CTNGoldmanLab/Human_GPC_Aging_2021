@@ -1,0 +1,130 @@
+---
+title: "Processing of In Vitro Aging Overexperssion scRNA-seq"
+author: "John Mariani"
+date: "1/24/2023"
+output: github_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "..")
+```
+
+
+```{r, echo = TRUE, message=FALSE, warning=FALSE}
+
+library(Seurat)
+library(ggplot2)
+library(plyr)
+library(patchwork)
+
+`%not in%` <- function(x, table) is.na(match(x, table, nomatch = NA_integer_))
+
+
+options(future.globals.maxSize = 16000 * 1024^2)
+
+```
+
+# Load in Count Matrices and create seurat objects
+
+```{r}
+
+
+
+sampleList <- list.files("Matrices/Overexpression/")
+sampleList
+
+# Read in filtered matrices 
+raw <- sapply(sampleList, function(x) {print(x) ; Read10X(paste0("Matrices/Overexpression/",x,"/star_hs/filtered"))})
+
+sets <- length(raw)
+
+#  Convert to list of seurat objects and filter for quality
+ObjectsH <- sapply(c(1:sets), function(x) CreateSeuratObject(raw[[x]], project = sampleList[x]))
+
+
+```
+
+## Make Quality Violin Plots
+```{r}
+
+
+for (i in 1:sets) {
+  ObjectsH[[i]] <- PercentageFeatureSet(ObjectsH[[i]], pattern = "^MT-", col.name = "percent.mt")
+}
+
+saveRDS(ObjectsH, "RDS/ObjectsH_Pre.rds")
+
+for (i in 1:sets) {
+  ObjectsH[[i]] <- subset(x = ObjectsH[[i]], subset = nFeature_RNA > 500 & percent.mt < 15)
+}
+
+VlnPlot(ObjectsH[[3]], c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+
+saveRDS(ObjectsH, "RDS/ObjectsH_Post.rds")
+
+
+
+```
+
+## Merge datasets and compute Cell Cycle Scores
+
+```{r}
+
+merged <- merge(ObjectsH[[1]], y = ObjectsH[2:length(ObjectsH)])
+
+merged <- NormalizeData(merged)
+
+s.genes = cc.genes$s.genes
+s.genes[s.genes == "MLF1IP"] <- "CENPU"
+g2m.genes = cc.genes$g2m.genes
+g2m.genes[g2m.genes == "FAM64A"] <- "PIMREG"
+g2m.genes[g2m.genes == "HN1"] <- "JPT1"
+
+merged <- CellCycleScoring(merged, s.features = s.genes, g2m.features = g2m.genes, set.ident = F)
+merged$CC.difference <- merged$S.Score - merged$G2M.Score
+
+```
+
+## Integrate Data and Save
+
+```{r}
+
+integrationList <- SplitObject(merged, split.by = "orig.ident")
+
+
+for(i in 1:length(integrationList)){
+  integrationList[[i]] <- SCTransform(integrationList[[i]], verbose = T, vars.to.regress = c("percent.mt", "nCount_RNA", "CC.difference"), conserve.memory = F)
+}
+
+features <- SelectIntegrationFeatures(object.list = integrationList, nfeatures = 3000)
+features <- features[features %not in% c("eGFP", "ZNF274", "E2F6")]
+
+integrationList <- PrepSCTIntegration(object.list = integrationList, anchor.features = features, verbose = T)
+integrated <- FindIntegrationAnchors(object.list = integrationList, normalization.method = "SCT", anchor.features = features, verbose = T)
+integrated <- IntegrateData(anchorset = integrated, normalization.method = "SCT", verbose = T)
+
+
+DefaultAssay(integrated) <- "integrated"
+integrated <- RunPCA(integrated, verbose = FALSE)
+integrated <- RunUMAP(integrated, dims = 1:50, verbose = FALSE, umap.method = "umap-learn")
+integrated <- FindNeighbors(integrated, dims = 1:50, verbose = FALSE)
+integrated <- FindClusters(integrated, verbose = FALSE, resolution = .25)
+
+DimPlot(integrated)
+integrated$ogClusters <- Idents(integrated)
+
+saveRDS(integrated, "RDS/integrated_OE.rds")
+
+```
+
+## Session Info
+```{r}
+
+sessionInfo()
+
+
+```
+
+
+

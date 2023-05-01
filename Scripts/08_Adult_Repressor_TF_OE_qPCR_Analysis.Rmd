@@ -1,0 +1,311 @@
+---
+title: "qPCR Analysis of Adult Repressor OE in C27 hGPCs"
+author: "John Mariani"
+date: "03/06/23"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+```{r}
+library(tidyverse)
+library(lsmeans)
+library(ggplot2)
+library(patchwork)
+library(cowplot)
+library(plyr)
+
+```
+##Read in CTs and organize data
+
+```{r}
+
+cts <- read.csv("data_for_import/overexpressionCTs.csv", stringsAsFactors = F)
+cts$Condition  <- trimws(cts$Condition, which = "both")
+
+
+rubric <- unique(cts$Condition)
+rubric
+
+names(rubric) <- c("Dox", "E2F6", "IKZF3", "MAX", "ZNF274")
+cts$Condition <- mapvalues(cts$Condition, from = rubric, names(rubric))
+
+cts <- tibble(cts)
+
+ctsLonger <- pivot_longer(cts, cols = c("MKI67", "CDK1", "CDKN1A", "CDKN2A", "IL1A", "MBP", "PDGFRA"), values_to = "deltaCT", names_to = "Gene")
+ctsLonger <- ctsLonger[!is.na(ctsLonger$deltaCT),]
+
+ctsLonger$group <- paste0(ctsLonger$Gene, "_", ctsLonger$Timepoint)
+```
+
+## Calculate Delta CTs
+```{r}
+
+DoxAverages <- data.frame(group = unique(ctsLonger$group))
+
+DoxAverages$DoxAverage <- NA
+
+for(i in DoxAverages$group){
+  tempMean <- mean(ctsLonger[ctsLonger$group == i & ctsLonger$Condition == "Dox",]$deltaCT)
+  DoxAverages[DoxAverages$group == i,]$DoxAverage <- tempMean
+}
+
+ctsLonger$deltaDeltaCT <- NA
+
+for(i in 1:nrow(ctsLonger)){
+  ctsLonger$deltaDeltaCT[i] <-  ctsLonger$deltaCT[i] - DoxAverages[DoxAverages$group == ctsLonger$group[i],]$DoxAverage
+}
+
+ctsLonger$FC <- 2^-ctsLonger$deltaDeltaCT
+ctsLonger$Timepoint <- factor(ctsLonger$Timepoint, levels = c("D3", "D7", "D10"))
+
+ctsLonger$conditionTP <- paste0(ctsLonger$Condition, "_", ctsLonger$Timepoint)
+
+
+
+summaryFCs <- ctsLonger %>% 
+  group_by(Condition, Timepoint, Gene) %>% 
+  dplyr::summarise(meanFC = mean(FC),
+            std = sd(FC),
+            n = n())
+
+
+summaryFCs2 <- summaryFCs %>%
+  group_by(Timepoint, Gene,) %>%
+  dplyr::summarise(adjustedFC = meanFC / meanFC[Condition == "Dox"],
+            temp = meanFC[Condition == "Dox"],
+            Condition = Condition,
+            std = std, 
+            n = n)
+
+summaryFCs2$std <- summaryFCs2$std / summaryFCs2$temp
+summaryFCs2$SE <- summaryFCs2$std / (summaryFCs2$n^.5)
+
+summaryFCs2$Gene <- factor(summaryFCs2$Gene, levels = c("MKI67", "CDK1", "PDGFRA", "CDKN1A", "CDKN2A", "IL1A", "MBP"))
+
+```
+
+
+##Calculate LM Significance with lsmeans
+
+```{r}
+
+for(i in 1:length(unique(ctsLonger$Gene))){
+  gene <- unique(ctsLonger$Gene)[i]
+  anovaGene <- ctsLonger[ctsLonger$Gene == gene,]
+  lm1 <- lm(deltaCT~Condition * Timepoint + Replicate, anovaGene)
+  tempSummary <- summary(lsmeans(lm1, ~ Condition | Timepoint) %>%
+                           contrast("trt.vs.ctrl", ref = 1) %>%
+                           update(by = NULL, adjust = "bh"))
+  
+  tempSummary$Condition <- gsub( " .*$", "",tempSummary$contrast)
+  tempSummary$Gene <- gene
+  tempSummary$sig <- ifelse(tempSummary$p.value < .001, "***", 
+                            ifelse(tempSummary$p.value < .01, "**", 
+                                   ifelse(tempSummary$p.value < .05, "*", 
+                                          ifelse(tempSummary$p.value < .1, "", ""))))
+  if(i == 1){
+    lmSummary <- tempSummary
+  } else {
+    lmSummary <- rbind(lmSummary, tempSummary)
+  }
+}
+
+```
+
+
+## Make Heat map
+```{r}
+
+
+lmSummary$concat <- paste(lmSummary$Condition, lmSummary$Timepoint, lmSummary$Gene, sep = "_")
+summaryFCs2$concat <- paste(summaryFCs2$Condition, summaryFCs2$Timepoint, summaryFCs2$Gene, sep = "_")
+summaryFCs2$sig <- ""
+
+summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$sig <- mapvalues(x = summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$concat, from = lmSummary$concat, to = lmSummary$sig, )
+
+summaryFCs3 <- summaryFCs2
+summaryFCs3$Gene <- factor(summaryFCs3$Gene, levels = rev(levels(summaryFCs3$Gene)))
+
+
+targetGG <- ggplot(summaryFCs3[summaryFCs2$Condition != "Dox",], aes(Timepoint, Gene)) + geom_tile(aes(fill = log2(adjustedFC)), colour = "black") +
+  facet_grid(cols = vars(Timepoint, Condition), scales = "free", space  = "free") +
+  scale_fill_gradientn(colours = c("darkblue","lightgrey","red"), values = scales::rescale(c(-.7,-.1,.7)), guide = guide_colourbar(direction = "horizontal", title = "Log2 FC vs Timepoint Dox Control", title.position = "top")) +
+  theme(panel.spacing.x = unit(0,"lines"), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "bottom", axis.title.x = element_blank()) +
+  scale_x_discrete(expand = c(0,0)) + scale_y_discrete(expand = c(0,0)) + 
+  geom_text(aes(label = sig), size = 8)
+
+targetGG
+```
+
+## Gene overexpression graphs
+
+```{r}
+cts <- read.csv("data_for_import/repressorCTs.csv", stringsAsFactors = F)
+cts$Condition  <- trimws(cts$Condition, which = "both")
+
+
+rubric <- unique(cts$Condition)
+rubric
+names(rubric) <- c("E2F6", "IKZF3", "MAX", "ZNF274", "Dox")
+cts$Condition <- mapvalues(cts$Condition, from = rubric, names(rubric))
+
+
+cts <- tibble(cts)
+
+ctsLonger <- pivot_longer(cts, cols = c("E2F6", "IKZF3", "MAX", "ZNF274"), values_to = "deltaCT", names_to = "Gene")
+ctsLonger <- ctsLonger[!is.na(ctsLonger$deltaCT),]
+
+
+ctsLonger$group <- paste0(ctsLonger$Gene, "_", ctsLonger$Timepoint)
+
+```
+
+## Calculate Delta CTs
+```{r}
+DoxAverages <- data.frame(group = unique(ctsLonger$group))
+
+DoxAverages$DoxAverage <- NA
+
+for(i in DoxAverages$group){
+  tempMean <- mean(ctsLonger[ctsLonger$group == i & ctsLonger$Condition == "Dox",]$deltaCT)
+  DoxAverages[DoxAverages$group == i,]$DoxAverage <- tempMean
+}
+
+ctsLonger$deltaDeltaCT <- NA
+
+for(i in 1:nrow(ctsLonger)){
+  ctsLonger$deltaDeltaCT[i] <-  ctsLonger$deltaCT[i] - DoxAverages[DoxAverages$group == ctsLonger$group[i],]$DoxAverage
+}
+
+
+
+ctsLonger$FC <- 2^-ctsLonger$deltaDeltaCT
+ctsLonger$Timepoint <- factor(ctsLonger$Timepoint, levels = c("D3", "D7", "D10"))
+
+
+DoxAverages10 <- DoxAverages
+
+for(i in DoxAverages10$group){
+  tempMean <- mean(ctsLonger[ctsLonger$group == i & ctsLonger$Condition == "Dox",]$FC)
+  DoxAverages10[DoxAverages10$group == i,]$DoxAverage <- tempMean
+}
+
+
+ctsLonger$adjFC <- NA
+
+for(i in 1:nrow(ctsLonger)){
+  ctsLonger$adjFC[i] <-  ctsLonger$FC[i] / DoxAverages10[DoxAverages10$group == ctsLonger$group[i],]$DoxAverage
+}
+
+ctsLonger$adjFC <- log2(ctsLonger$adjFC)
+
+ctsLonger$conditionTP <- paste0(ctsLonger$Condition, "_", ctsLonger$Timepoint)
+
+
+summaryFCs <- ctsLonger %>% 
+  group_by(Condition, Timepoint, Gene) %>% 
+  dplyr::summarise(adjustedFC = mean(adjFC),
+            std = sd(adjFC),
+            n = n())
+
+
+summaryFCs2 <- summaryFCs
+
+summaryFCs2$SE <- summaryFCs2$std / (summaryFCs2$n^.5)
+
+```
+
+## Calculate statistics with lsmeans
+```{r}
+for(i in 1:length(unique(ctsLonger$Gene))){
+  gene <- unique(ctsLonger$Gene)[i]
+  anovaGene <- ctsLonger[ctsLonger$Gene == gene,]
+  lm1 <- lm(deltaCT~Condition * Timepoint + Replicate, anovaGene)
+  tempSummary <- summary(lsmeans(lm1, ~ Condition | Timepoint) %>%
+                           contrast("trt.vs.ctrl", ref = 1) %>%
+                           update(by = NULL, adjust = "bh"))
+  
+  tempSummary$Condition <- gsub( " .*$", "",tempSummary$contrast)
+  tempSummary$Gene <- gene
+  tempSummary$sig <- ifelse(tempSummary$p.value < .001, "***", 
+                            ifelse(tempSummary$p.value < .01, "**", 
+                                   ifelse(tempSummary$p.value < .05, "*", 
+                                          ifelse(tempSummary$p.value < .1, "", ""))))
+  if(i == 1){
+    lmSummary <- tempSummary
+  } else {
+    lmSummary <- rbind(lmSummary, tempSummary)
+  }
+}
+
+```
+
+## Make Plots
+```{r}
+
+lmSummary$concat <- paste(lmSummary$Condition, lmSummary$Timepoint, lmSummary$Gene, sep = "_")
+summaryFCs2$concat <- paste(summaryFCs2$Condition, summaryFCs2$Timepoint, summaryFCs2$Gene, sep = "_")
+summaryFCs2$sig <- ""
+
+summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$sig <- mapvalues(x = summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$concat, from = lmSummary$concat, to = lmSummary$sig, )
+
+
+OE <- ggplot(summaryFCs2[summaryFCs2$Condition != "Dox",], aes(fill = Condition, x = Timepoint, y = adjustedFC, label = sig)) + 
+  geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black") + theme_bw() + 
+  labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 90, hjust = 0) + facet_wrap(~Gene, scales = "free", nrow = 4) + theme(legend.position = "bottom") +
+  scale_x_discrete(expand = c(0,0)) + scale_y_continuous(expand = c(0,126))
+
+oeLegend <- get_legend(OE)
+
+
+
+E2F6 <- ggplot(summaryFCs2[summaryFCs2$Condition == "E2F6",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
+  geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "darkmagenta") + theme_bw() + 
+  labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(expand = c(0,0)) + ggtitle("E2F6 Overexpression") + ylim(c(0,11.5))
+
+IKZF3 <- ggplot(summaryFCs2[summaryFCs2$Condition == "IKZF3",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
+  geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "forestgreen") + theme_bw() + 
+  labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(expand = c(0,0)) + ggtitle("IKZF3 Overexpression") + ylim(c(0,16))
+
+MAX <- ggplot(summaryFCs2[summaryFCs2$Condition == "MAX",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
+  geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "cyan4") + theme_bw() + 
+  labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(expand = c(0,0)) + ggtitle("MAX Overexpression") + ylim(c(0,16))
+
+ZNF274 <- ggplot(summaryFCs2[summaryFCs2$Condition == "ZNF274",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
+  geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "orange") + theme_bw() + 
+  labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(expand = c(0,0)) + ggtitle("ZNF274 Overexpression") + ylim(c(0,10))
+
+qpcrGGs <- ((E2F6 / IKZF3 / MAX / ZNF274) | targetGG) + plot_layout(widths = c(1,2))
+
+qpcrGGs
+
+saveRDS(qpcrGGs, "RDS/qpcrGGs.rds")
+
+```
+
+
+
+
+```{r}
+
+sessionInfo()
+
+```
+
+
+

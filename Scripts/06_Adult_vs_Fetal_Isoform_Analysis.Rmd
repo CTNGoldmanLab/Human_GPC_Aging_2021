@@ -1,0 +1,109 @@
+---
+title: "Identification of differentially active transcriptional regulators between adult and fetal hGPCs"
+author: "John Mariani"
+date: "03/06/23"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+```{r}
+library(ggplot2)
+library(tximport)
+library(matrixStats)
+library(data.table)
+
+```
+
+
+## Process isoform data
+```{r}
+#Read in RSEM gene output
+temp = list.files(path = "./data_for_import/isoforms", pattern="isoforms.results")
+
+names(temp) <- substr(temp,1,nchar(temp)-22)
+
+txi.rsem.isoforms <- tximport(paste0("./data_for_import/isoforms/",temp), txIn = T, txOut = T, type = "rsem")
+
+colnames(txi.rsem.isoforms)
+
+for(i in 1:3){
+  colnames(txi.rsem.isoforms[[i]]) <- names(temp)
+}
+
+
+isoformTPM <- txi.rsem.isoforms$abundance
+
+
+filename="data_for_import/ensembl_transcript_list.csv"
+if(file.exists(filename)){
+  ensemblTranscriptListH <- read.csv(filename)} else{
+    marth <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = 'http://jan2019.archive.ensembl.org/', ensemblRedirect = T)
+    ensemblTranscriptListH <- getBM(attributes = c("ensembl_transcript_id", "external_transcript_name", "ensembl_gene_id","external_gene_name", "gene_biotype", "transcript_biotype", "description"), filters = "ensembl_transcript_id",values = row.names(isoformTPM), mart = marth)
+    write.csv(ensemblTranscriptListH, filename, row.names = F)
+  }
+
+
+
+isoformTPM <- merge(isoformTPM, ensemblTranscriptListH, by.x = 0, by.y = "ensembl_transcript_id")
+
+```
+
+
+### Make Isoform graph
+### Only protein-coding
+```{r}
+adultRepressors <- isoformTPM[isoformTPM$external_gene_name %in% c("E2F6", "MAX", "ZNF274", "IKZF3"),]
+
+adultRepressors$adultMean <- rowMeans(adultRepressors[,2:4])
+adultRepressors$adultSE<- rowSds(as.matrix(adultRepressors[,2:4])) / sqrt(3)
+
+adultRepressors$cd140Mean <- rowMeans(adultRepressors[,c(5:7,11:14)])
+adultRepressors$cd140SE<- rowSds(as.matrix(adultRepressors[,c(5:7,11:14)])) / sqrt(7)
+
+adultRepressors$a2b5Mean <- rowMeans(adultRepressors[,8:10])
+adultRepressors$a2b5SE<- rowSds(as.matrix(adultRepressors[,8:10])) / sqrt(3)
+
+adultRepressors <- adultRepressors[rowMeans(adultRepressors[,c(21,23,25)]) > 0,]
+
+adultRepressors <- rbindlist(list(adultRepressors[,c(15,17,19,21,22)], adultRepressors[,c(15,17,19,23,24)], adultRepressors[,c(15,17,19,25,26)]))
+adultRepressors$group <- c(rep("Adult A2B5", 39), rep("Fetal CD140", 39), rep("Fetal A2B5", 39))
+
+adultRepressors <- adultRepressors[order(adultRepressors$external_gene_name, adultRepressors$adultMean, decreasing = T),]
+adultRepressors$external_transcript_name <- factor(adultRepressors$external_transcript_name, levels = rev(adultRepressors[!duplicated(adultRepressors$external_transcript_name),]$external_transcript_name))
+adultRepressors$group <- factor(adultRepressors$group, levels = rev(c("Adult A2B5", "Fetal A2B5", "Fetal CD140")))
+
+adultRepressorsPC <- adultRepressors[adultRepressors$transcript_biotype == "protein_coding",]
+
+
+limits <- aes(ymax = adultRepressorsPC$adultMean + adultRepressorsPC$adultSE,  
+  ymin =  adultRepressorsPC$adultMean - adultRepressorsPC$adultSE)
+
+adultRepressorsPC <- adultRepressorsPC[order(adultRepressorsPC$external_gene_name, adultRepressorsPC$adultMean, decreasing = T),]
+adultRepressorsPC$external_transcript_name <- factor(adultRepressorsPC$external_transcript_name, levels = rev(adultRepressorsPC[!duplicated(adultRepressorsPC$external_transcript_name),]$external_transcript_name))
+
+
+
+isoformPlotPC <- ggplot(adultRepressorsPC, aes(fill = group, y = adultMean, x = external_transcript_name))  + geom_errorbar(limits, position=position_dodge(.75), width = 0.75) + geom_col(width=0.75,    
+  position=position_dodge(0.75))  + coord_flip() + theme_minimal() + scale_y_continuous(expand = c(0, 0), limits = c(0,67)) + theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(), panel.border = element_rect(fill  = NA), legend.position = "bottom", axis.title.y = element_blank()) + ylab("Isoform TPM") + geom_vline(xintercept = seq(0.5, length(unique(adultRepressors$external_transcript_name)), by = 1), color="lightgray", size=.5, alpha=.5) + scale_fill_manual(values = c("#18BA0F", "#2E30FF", "#ff2020"))
+
+isoformPlotPC
+
+
+```
+
+
+
+```{r}
+
+sessionInfo()
+
+```
+
+
+

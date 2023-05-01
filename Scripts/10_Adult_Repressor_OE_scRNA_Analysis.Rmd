@@ -1,0 +1,459 @@
+---
+title: "scRNA-Seq Analysis of ZNF274 or E2F6 Overexpression in C27 hGPCs"
+author: "John Mariani"
+date: "03/06/23"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+```{r, echo = TRUE, message=FALSE, warning=FALSE}
+source("Scripts/Helper_Functions.R")
+library(Seurat)
+library(ggplot2)
+library(patchwork)
+library(scPlottingTools)
+library(xlsx)
+library(ggVennDiagram)
+library(data.table)
+library(plyr)
+
+options(future.globals.maxSize = 16000 * 1024^2)
+
+```
+
+# Make Quality Violin Plots
+
+```{r}
+
+ObjectsH <- readRDS("RDS/ObjectsH_Pre.rds")
+
+theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10))
+
+
+
+middleV <- VlnPlot(ObjectsH[[1]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+topV <- VlnPlot(ObjectsH[[2]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+bottomV <- VlnPlot(ObjectsH[[3]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+
+topV[[1]] <- topV[[1]] + ylab("EGFP CTR") + ggtitle("Unique Genes") 
+topV[[2]] <- topV[[2]] + ggtitle("UMIs") 
+topV[[3]] <- topV[[3]] + ggtitle("MT Gene%") 
+topV <- topV & theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+
+middleV[[1]] <- middleV[[1]] + ylab("E2F6 OE")
+middleV <- middleV & theme(axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_blank())
+
+bottomV[[1]] <- bottomV[[1]] + ylab("ZNF274 OE")
+bottomV <- bottomV & theme(axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_blank())
+
+topV / middleV / bottomV
+
+for (i in 1:3) {
+  ObjectsH[[i]] <- subset(x = ObjectsH[[i]], subset = nFeature_RNA > 500 & percent.mt < 15)
+}
+
+
+middleV2 <- VlnPlot(ObjectsH[[1]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+topV2 <- VlnPlot(ObjectsH[[2]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+bottomV2 <- VlnPlot(ObjectsH[[3]], c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = .01) & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10), axis.title = element_text(size = 10))
+
+topV2[[1]] <- topV2[[1]] + ylab("EGFP CTR") + ggtitle("Unique Genes")
+topV2[[2]] <- topV2[[2]] + ggtitle("UMIs")
+topV2[[3]] <- topV2[[3]] + ggtitle("MT Gene%")
+topV2 <- topV2 & theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+
+middleV2[[1]] <- middleV2[[1]] + ylab("E2F6 OE")
+middleV2 <- middleV2 & theme(axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_blank())
+
+bottomV2[[1]] <- bottomV2[[1]] + ylab("ZNF274 OE")
+bottomV2 <- bottomV2 & theme(axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_blank())
+
+topV2 / middleV2 / bottomV2
+
+topSup <- (topV / middleV / bottomV) | (topV2 / middleV2 / bottomV2) 
+
+
+topSup 
+
+```
+
+# Load Integrated Data and identify Celltypes
+
+```{r}
+integrated <- readRDS("RDS/integrated_OE.rds")
+
+DefaultAssay(integrated) <- "RNA"
+integrated <- NormalizeData(integrated)
+
+VlnPlot(integrated, c("PDGFRA", "MKI67", "GFAP", "CD44", "MYT1L", "GRIA2", "NEUROD2", "RBFOX3"), ncol = 4, pt.size = 0) | DimPlot(integrated)
+
+
+integrated <- RenameIdents(integrated, "4" = "Astrocytic")
+integrated <- RenameIdents(integrated, "6" = "Neuronal")
+integrated <- RenameIdents(integrated, "2" = "GPC")
+integrated <- RenameIdents(integrated, "3" = "GPC")
+integrated <- RenameIdents(integrated, "0" = "NPC")
+integrated <- RenameIdents(integrated, "1" = "NPC")
+integrated <- RenameIdents(integrated, "5" = "NPC")
+integrated <- RenameIdents(integrated, "7" = "NPC")
+
+Idents(integrated) <- factor(Idents(integrated), levels = c("GPC", "Astrocytic", "NPC", "Neuronal"))
+integrated$CellType <- Idents(integrated)
+
+
+VlnPlot(integrated, c("PDGFRA", "MKI67", "GFAP", "CD44", "MYT1L", "GRIA2", "NEUROD2", "RBFOX3"), ncol = 4, pt.size = 0) | DimPlot(integrated)
+
+
+temp <- unique(integrated$orig.ident)
+names(temp) <- c("E2F6 OE", "EGFP CTR", "ZNF274 OE")
+integrated$label <- mapvalues(integrated$orig.ident, from = temp, to = names(temp))
+integrated$label <- factor(integrated$label, levels = c("EGFP CTR", "E2F6 OE", "ZNF274 OE"))
+
+
+
+
+```
+
+## Make Supplement Figure
+```{r}
+
+table(integrated$label)
+
+suppDims <- (DimPlotCustom(integrated, group.by = "CellType", split.by = "label") & NoLegend())
+suppDims[[1]] <- suppDims[[1]]  + ggtitle ("EGFP CTR - 4,526 Cells")
+suppDims[[2]] <- suppDims[[2]]  + ggtitle ("EGFP CTR - 4,517 Cells")
+suppDims[[3]] <- suppDims[[3]]  + ggtitle ("EGFP CTR - 5,584 Cells")
+
+suppBottomFigure <- suppDims /
+VlnPlot(integrated, c("PDGFRA", "MKI67", "GFAP", "CD44", "MYT1L", "GRIA2", "NEUROD2", "RBFOX3"), pt.size = 0, ncol  = 4) & theme(axis.title = element_blank())
+
+suppBottomFigure <- suppBottomFigure & theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10))
+
+
+(topSup / suppBottomFigure) + plot_layout(heights = c(1,1.3)) 
+
+ggsave("figures/ExtendedDataFigure7.pdf", width = 8.5, height = 11)
+
+
+```
+
+## Determine GPC markers
+```{r}
+
+table(integrated$label)
+
+GPCvsAll <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", test.use = "MAST", logfc.threshold = 0)
+GPCvsAll$gene <- row.names(GPCvsAll)
+GPCvsAll.sig <- GPCvsAll[GPCvsAll$p_val_adj < 0.05,]
+GPCvsAll.sig <- GPCvsAll.sig[order(GPCvsAll.sig$avg_log2FC, decreasing = T),]
+GPCvsAll.sig <- GPCvsAll.sig[,c(2:6)]
+names(GPCvsAll.sig) <- c("Log2FC GPC vs Non-GPC", "GPC pct", "Non-GPC pct", "Adj P-Vale", "Gene")
+write.xlsx(GPCvsAll.sig, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "GPC Cluster Markers")
+
+
+GPCvsAstrocyte <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Astrocytic", test.use = "MAST", logfc.threshold = 0)
+GPCvsAstrocyte$gene <- row.names(GPCvsAstrocyte)
+GPCvsAstrocyte.sig <- GPCvsAstrocyte[GPCvsAstrocyte$p_val_adj < 0.05,]
+GPCvsAstrocyte.sig <- GPCvsAstrocyte.sig[order(GPCvsAstrocyte.sig$avg_log2FC, decreasing = T),]
+
+
+GPCvsNPC <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "NPC", test.use = "MAST", logfc.threshold = 0)
+GPCvsNPC$gene <- row.names(GPCvsNPC)
+GPCvsNPC.sig <- GPCvsNPC[GPCvsNPC$p_val_adj < 0.05,]
+GPCvsNPC.sig <- GPCvsNPC.sig[order(GPCvsNPC.sig$avg_log2FC, decreasing = T),]
+
+GPCvsNeuronal <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Neuronal", test.use = "MAST", logfc.threshold = 0)
+GPCvsNeuronal$gene <- row.names(GPCvsNeuronal)
+GPCvsNeuronal.sig <- GPCvsNeuronal[GPCvsNeuronal$p_val_adj < 0.05,]
+GPCvsNeuronal.sig <- GPCvsNeuronal.sig[order(GPCvsNeuronal.sig$avg_log2FC, decreasing = T),]
+
+
+allMarkers <- FindAllMarkers(subset(integrated, subset = label == "EGFP CTR"), test.use = "MAST", logfc.threshold = 0)
+
+
+
+
+
+```
+
+
+## Subset GPC population for DE analysis
+
+```{r}
+GPC <- subset(integrated, idents = "GPC")
+
+#### Over expression plots
+GPCfeaturePlots <- FeaturePlotCustom(GPC, c("PDGFRA", "E2F6", "ZNF274"), split.by = "label", sharedScale = "All")+ plot_layout(guides = "collect")
+GPCfeaturePlots 
+
+
+frequencies <- DotPlot(GPC, group.by = "label", features = row.names(GPC))
+
+freq <- frequencies$data
+freq <- freq[freq$pct.exp > .1,]
+features <- unique(freq$features.plot)
+
+
+#### DE
+E2F6vsEGFPall <- FindMarkers(GPC, ident.1 = "E2F6 OE", ident.2 = "EGFP CTR", test.use = "MAST", group.by = "label", logfc.threshold = 0, features = features)
+ZNF274vsEGFPall <- FindMarkers(GPC, ident.1 = "ZNF274 OE", ident.2 = "EGFP CTR", test.use = "MAST", group.by = "label", logfc.threshold = 0, features = features)
+
+
+E2F6vsEGFPall$gene <- row.names(E2F6vsEGFPall)
+ZNF274vsEGFPall$gene <- row.names(ZNF274vsEGFPall)
+
+E2F6vsEGFP <- E2F6vsEGFPall[E2F6vsEGFPall$p_val_adj < 0.05 & abs(E2F6vsEGFPall$avg_log2FC) > 0.25,]
+ZNF274vsEGFP <- ZNF274vsEGFPall[ZNF274vsEGFPall$p_val_adj < 0.05 & abs(ZNF274vsEGFPall$avg_log2FC) > 0.25,]
+
+E2F6vsEGFP$gene <- row.names(E2F6vsEGFP)
+ZNF274vsEGFP$gene <- row.names(ZNF274vsEGFP)
+
+write.table(E2F6vsEGFP, "output/E2F6vsEGFP.txt", quote = F, row.names = F, sep = "\t")
+write.table(ZNF274vsEGFP, "output/ZNF274vsEGFP.txt", quote = F, row.names = F, sep = "\t")
+
+sup4a <- E2F6vsEGFP
+sup4b <- ZNF274vsEGFP
+
+sup4a <- sup4a[,c(2:6)]
+names(sup4a) <- c("Log2FC_E2F6_vs_CTR",	"Percent E2F6",	"Percent Ctr",	"Adj_P_Val",	"External_Gene_Name")
+
+sup4b <- sup4b[,c(2:6)]
+names(sup4b) <- c("Log2FC_ZNF274_vs_CTR",	"Percent ZNF274",	"Percent Ctr",	"Adj_P_Val",	"External_Gene_Name")
+
+
+# Write out Extended Data Table
+write.xlsx(E2F6vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "E2F6_OE_vs_EGFP_CTR_DE", append = T)
+
+write.xlsx(ZNF274vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "ZNF274_OE_vs_EGFP_CTR_DE", append = T)
+
+
+
+```
+
+
+
+## Venn 
+```{r}
+VennAging <- list(
+  "E2F6 vs EGFP" =E2F6vsEGFP$gene,
+  "ZNF274 vs EGFP" = ZNF274vsEGFP$gene)
+
+venn <- ggVennDiagram(VennAging, label = "count") + theme(legend.position = "none")
+
+venn
+
+intersectingGenes <- merge(E2F6vsEGFP, ZNF274vsEGFP, by.x = 0, by.y = 0)
+
+table(intersectingGenes$avg_log2FC.x > 0, intersectingGenes$avg_log2FC.y > 0)
+
+
+
+```
+
+## FC Heatmap
+```{r}
+
+#####  FC Heatmap
+E2F6vsEGFPall$Comparison <- "E2F6 OE vs EGFP CTR"
+ZNF274vsEGFPall$Comparison <- "ZNF274 OE vs EGFP CTR"
+
+agingHM <- rbind(E2F6vsEGFPall, ZNF274vsEGFPall)
+
+agingHMgenes <- c("CDK1", "PDGFRA", "EZH2", "HMGB1", "BCL11A", "TEAD2", "E2F6", "ZNF274", "MKI67", "PCLAF", "MIF", "CENPU", "CDKN1A", "TXNIP", 
+                  "HIST1H4C", "TOP2A", "LMNB1", "BTG1", "CTNNB1", "ZMAT3", "GADD45G", "HMGN2", "HMGB1","HMGB2", "TMPO")
+
+
+
+agingHM <- agingHM[agingHM$gene %in% agingHMgenes,]
+agingHM$p_val_adj <- ifelse(abs(agingHM$avg_log2FC) < 0.25, 1, agingHM$p_val_adj)
+
+
+agingHM$sig <- ifelse(agingHM$p_val_adj < .0001, "****", 
+                          ifelse(agingHM$p_val_adj < .001, "***", 
+                                 ifelse(agingHM$p_val_adj < .01, "**", 
+                                        ifelse(agingHM$p_val_adj < .05, "*", ""))))
+
+# agingHMgg <- ggplot(agingHM, aes(y = Comparison, x = gene, fill = avg_log2FC, label = sig)) + geom_tile() + scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, mid = "lightgrey") +
+#   geom_text(vjust = .7, size = 6, hjust = .5, angle = 90)  + 
+#   scale_x_discrete(expand = c(0,0)) + 
+#   scale_y_discrete(expand = c(0,0)) +
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.05), axis.title = element_blank()) 
+# 
+# agingHMgg
+
+agingHMgg2 <- ggplot(agingHM, aes(x = Comparison, y = gene, fill = avg_log2FC, label = sig)) + geom_tile() + scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, mid = "lightgrey") +
+  geom_text(vjust = .7, size = 6, hjust = .5, angle = 0)   + 
+  scale_x_discrete(expand = c(0,0)) + 
+  scale_y_discrete(expand = c(0,0)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title = element_blank(), legend.position = "bottom") 
+
+agingHMgg2
+
+
+```
+
+## IPA Graph
+```{r}
+
+##### IPA
+filename="data_for_import/ensemblGeneList.csv"
+if(file.exists(filename)){
+  ensemblGeneListH <- read.csv(filename)} else{
+    marth <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = 'http://jan2019.archive.ensembl.org/', ensemblRedirect = T)
+    ensemblGeneListH <- getBM(attributes = c("ensembl_gene_id","external_gene_name", "gene_biotype", "description"), filters = "ensembl_gene_id",values = row.names(txi.rsem$counts), mart = marth)
+    write.csv(ensemblGeneListH, filename, row.names = F)
+  }
+
+
+files <- paste0("data_for_import/", c("ZNF274vsEGFP_IPA.txt", "E2F6vsEGFP_IPA.txt"))
+compNames <- c("ZNF274 OE vs EGFP CTR", "E2F6 OE vs EGFP CTR")
+
+IPAparse <- function(files, compNames, pval = 0.001, filterTerms, ensembl, returnWhat = "Filtered"){
+  pval <- -log10(pval)
+  for(i in 1:length(files)){
+    canonicalIPA <- fread(files[i], skip = "Canonical",drop = c(4,6))
+    names(canonicalIPA) <- c("Pathway", "pVal", "zScore", "Genes")
+    canonicalIPA$type <- "Canonical"
+    upstreamIPA <- fread(files[i], skip = "Upstream Regulators", drop = c(1:2,4:6,8:10,13:14))
+    upstreamIPA <- upstreamIPA[,c(1,3,2,4)]
+    names(upstreamIPA) <- c("Pathway", "pVal", "zScore", "Genes")
+    upstreamIPA$Pathway <- paste0(upstreamIPA$Pathway, " Signaling")
+    upstreamIPA$pVal <- -log10(upstreamIPA$pVal)
+    upstreamIPA$type <- "Upstream"
+    functionalIPA <- fread(files[i], skip = "Diseases and Bio", drop = c(1,2,5,7,8,10,11))
+    names(functionalIPA) <- c("Pathway", "pVal", "zScore", "Genes")
+    functionalIPA$pVal <- -log10(functionalIPA$pVal)
+    functionalIPA$type <- "Functional"
+    moleculesIPAtemp <- fread(files[i], skip = "Analysis Ready Molecules", drop = c(3:4))
+    if(i == 1){
+      IPA <- rbind(canonicalIPA, upstreamIPA, functionalIPA)
+      IPA$comparison <- compNames[i]
+      moleculesIPA <- moleculesIPAtemp
+    } else {
+      tempIPA <- rbind(canonicalIPA, upstreamIPA, functionalIPA)
+      tempIPA$comparison <- compNames[i]
+      IPA <- rbind(IPA, tempIPA)
+      moleculesIPA <- rbind(moleculesIPA, moleculesIPAtemp)
+    }
+  }
+  
+  
+  IPA[is.na(IPA$zScore)]$zScore <- 0
+  ogIPA <- IPA
+  IPA <- IPA[IPA$pVal > pval,]
+  filteredIPA <- IPA[!grepl(paste(filterTerms, collapse = "|"), ignore.case = T, IPA$Pathway),]
+  if(returnWhat == "Filtered"){
+    return(filteredIPA)
+  } 
+  if(returnWhat == "Deleted"){
+    deletedIPA <- IPA[grepl(paste(filterTerms, collapse = "|"), ignore.case = T, IPA$Pathway),]
+    return(deletedIPA)
+  }
+  if(returnWhat == "Molecules"){
+    moleculesIPA <- merge(moleculesIPA, ensembl, by.x = "ID", by.y = "ensembl_gene_id")
+    return(moleculesIPA)
+  }
+}
+
+
+IPAfilters <- c("cancer","glioma", "abdominal", "carcinoma", "endometrium", "eye", "nose", "epidermis", "head", "lymphocyte", "renal", "snout", "tooth", 
+                "connective", "tumor", "fibroblast", "rickets", "mouth", "maxilla", "cartilage", "neoplasm", "lymph", "liver", "psoriasis", "cardio",
+                "cardiac", "tongue", "tinea", "herpes", "Picornaviridae", "virus", "killer T", "muscle", "myopathy", "pancreatic", "Onychomycosis",
+                "leukocyte", "oral cavity","osteoclast", "Merkel", "macrophage", "Hydrometrocolpos", "Hand", "Gastric", "Thymocytes", "diabetes",
+                "Dupuytren", "myoblast", "ear$", "implantation", "bone", "limb", "cleft lip", "Calcinosis", "lung", "Benign lesion", 
+                "body axis", "sensory organ", "diabetic", "neutrophil", "infection of mammalia", "leukopoiesis", "neoplasia", "Sensory system development",
+                "T cell", "myeloid", "aorta", "body cavity", "esophagus", "incisor", "kidney", "oesophageal", "respiratory", "skin", "cavity", "urinary",
+                "foot", "digit", "heart", "acute biphenotypic leukemia", "Ankylosis", "Articular rigidity", "Atherosclero", "Blister", "Branching morphogenesis of epithelial tubule",
+                "Cervical spondylotic myelopathy", "epithelial", "exocrine", "gastrointestinal", "Ejection of first polar body", "Familial arrhythmia", "Familial nonsyndromic hearing impairment", 
+                "fibrosis", "mammary", "Hearing", "Morphogenesis of metanephric bud", "cochlea", "nail", "Plasma cell dyscrasia", "Secondary Leukemia", "granulocyte",
+                "Tinnitus", "metastasis", "trunk", "sperm motility", "skull", "dendritic cells", "dehydration", "digestive", "microphthalmia", "myelodysplastic",
+                "semicircular canal", " skeleton", "osteopenia", "osteoarthritis", "Refractory anemia with excess blasts", "rectum", "submandibular", "antiviral", "HIV-1",
+                "antigen present", "gonad", "keratinocyte", "phagocyte", "coronary", "intestinal", "viral replicon", "monocyte", "viral life", "wound", "leukemia", "Airway", "colorectal", "Benign oral disorder", "Benign pelvic disease", "Glioblastoma", "Melanoma", "astrocytoma", "sarcoma", "leiomyoma", "sertoli", "short stature", "midline defect")
+
+filteredAgingIPA <- IPAparse(files = files, compNames = compNames, filterTerms = IPAfilters, ensembl = ensemblGeneListH, returnWhat = "Filtered", pval = 0.05)
+
+deletedAgingIPA <- IPAparse(files = files, compNames = compNames, filterTerms = IPAfilters, ensembl = ensemblGeneListH, returnWhat = "Deleted", pval = 0.05)
+
+moleculesAging <- IPAparse(files = files, compNames = compNames, filterTerms = IPAfilters, ensembl = ensemblGeneListH, returnWhat = "Molecules", pval = 0.05)
+
+
+
+
+agingGOterms <- c("Senescence of cells", "YAP1 Signaling", "E2F6 Signaling", "TP53 Signaling", "CDKN2A Signaling", "Mitochondrial Dysfunction", "CDKN1A Signaling", "DNA damage", "TXNIP Signaling", "Oxidative Phosphorylation",  "TEAD1 Signaling", "Cell cycle progression",
+                  "PDGFRA Signaling", "CDK1 Signaling", "EZH2 Signaling", "HMGB1 Signaling", "MYC Signaling", "PCLAF Signaling", "ERBB2 Signaling", "E2F3 Signaling", "HMGA1 Signaling")
+
+agingGO <- filteredAgingIPA[filteredAgingIPA$Pathway %in% agingGOterms,]
+
+agingGO <- agingGO[,c(1:3,6)]
+
+agingGO$maxP <- 0
+
+for(i in unique(agingGO$Pathway)){
+  maxP <- max(agingGO[agingGO$Pathway == i,]$pVal)
+  agingGO[agingGO$Pathway == i,]$maxP <- maxP
+}
+
+agingGO <- agingGO[order(agingGO$maxP, rev(agingGO$comparison), decreasing = F),]
+
+agingGO$Pathway <- factor(agingGO$Pathway, levels = agingGO[!duplicated(agingGO$Pathway),]$Pathway)
+
+# agingFigGO <- ggplot(agingGO) +
+#   geom_point(aes(y = comparison, x = Pathway, size = pVal, colour = zScore)) +
+#   scale_colour_gradient2(high = "red", mid = "grey", low = "#2E30FF", midpoint = 0,guide = guide_colourbar(direction = "vertical", title = "Activation Z-Score", title.position = "top"))+
+#   #scale_colour_gradientn(colours = c("#2E30FF", "grey", "red" ), values = scales::rescale(c(-.4,-.1,.4)), guide = guide_colourbar(direction = "horizontal", title = "Activation Z-Score", title.position = "left"))  +
+#   theme_bw() +
+#   theme(legend.position = "right", axis.title.x = element_blank(), axis.title.y = element_blank(), legend.box = "vertical", axis.text.x =  element_text(angle = 90, hjust = 1, vjust = .05)) +
+#   labs(size="-Log10 P-Value")
+# 
+# agingFigGO
+
+agingFigGO2 <- ggplot(agingGO) +
+  geom_point(aes(x = comparison, y = Pathway, size = pVal, colour = zScore)) +
+  scale_colour_gradient2(high = "red", mid = "grey", low = "#2E30FF", midpoint = 0,guide = guide_colourbar(direction = "horizontal", title = "Activation Z-Score", title.position = "left"))+
+  #scale_colour_gradientn(colours = c("#2E30FF", "grey", "red" ), values = scales::rescale(c(-.4,-.1,.4)), guide = guide_colourbar(direction = "horizontal", title = "Activation Z-Score", title.position = "left"))  +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), legend.box = "horizontal", axis.text.x =  element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(size="-Log10 P-Value")
+
+agingFigGO2
+
+
+```
+
+## IPA sup Tables
+```{r}
+
+# Write out Extended Data Table for IPA terms
+supTable4c <- filteredAgingIPA[filteredAgingIPA$comparison == "E2F6 OE vs EGFP CTR",]
+supTable4c <- supTable4c[,c(1:5)]
+names(supTable4c) <- c("Pathway", "Adj_-log10_P_Val", "Z_Score", "Genes", "Type")
+supTable4c <- supTable4c[order(supTable4c$`Adj_-log10_P_Val`, decreasing = T),]
+
+supTable4d <- filteredAgingIPA[filteredAgingIPA$comparison == "ZNF274 OE vs EGFP CTR",]
+supTable4d <- supTable4d[,c(1:5)]
+names(supTable4d) <- c("Pathway", "Adj_-log10_P_Val", "Z_Score", "Genes", "Type")
+supTable4d <- supTable4d[order(supTable4d$`Adj_-log10_P_Val`, decreasing = T),]
+
+
+write.xlsx(supTable4c, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "E2F6 OE vs EGFP CTR IPA terms", row.names = F, append = T)
+
+write.xlsx(supTable4d, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "ZNF274 OE vs EGFP CTR IPA terms", row.names = F, append = T)
+
+
+
+```
+#Session Info
+```{r}
+
+sessionInfo()
+
+```
+
+
+
