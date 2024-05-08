@@ -1,7 +1,7 @@
 ---
 title: "scRNA-Seq Analysis of ZNF274 or E2F6 Overexpression in C27 hGPCs"
 author: "John Mariani"
-date: "03/06/23"
+date: "10/11/23"
 output: github_document
 ---
 
@@ -22,18 +22,38 @@ library(xlsx)
 library(ggVennDiagram)
 library(data.table)
 library(plyr)
+library(RcisTarget)
+library(AUCell)
+library(tidyr)
+library(AUCell)
+library(GSEABase)
+library(RColorBrewer)
+library(tidyverse)
+library(lsmeans)
+library(ComplexUpset)
+
+
 
 options(future.globals.maxSize = 16000 * 1024^2)
+
+```
+
+#Load prior data
+```{r}
+
+ObjectsH <- readRDS("RDS/ObjectsH_Pre.rds")
+de_intersect <- read.delim("output/de_Adult_vs_Fetal_Intersect.txt")
+source("Scripts/Helper_Functions.R")
+highTPM <- readRDS("RDS/highTPM.rds")
+de_intersect_all <- read.delim("output/de_Adult_vs_Fetal_Intersect_all.txt")
+
+
 
 ```
 
 # Make Quality Violin Plots
 
 ```{r}
-
-ObjectsH <- readRDS("RDS/ObjectsH_Pre.rds")
-
-theme(axis.text = element_text(size = 8), plot.title = element_text(size = 10))
 
 
 
@@ -117,6 +137,10 @@ integrated$label <- factor(integrated$label, levels = c("EGFP CTR", "E2F6 OE", "
 
 
 
+#saveRDS(integrated, "RDS/integrated_OE_processed.rds")
+
+
+
 
 ```
 
@@ -125,10 +149,10 @@ integrated$label <- factor(integrated$label, levels = c("EGFP CTR", "E2F6 OE", "
 
 table(integrated$label)
 
-suppDims <- (DimPlotCustom(integrated, group.by = "CellType", split.by = "label") & NoLegend())
+suppDims <- (scPlottingTools::DimPlotCustom(integrated, group.by = "CellType", split.by = "label") & NoLegend())
 suppDims[[1]] <- suppDims[[1]]  + ggtitle ("EGFP CTR - 4,526 Cells")
-suppDims[[2]] <- suppDims[[2]]  + ggtitle ("EGFP CTR - 4,517 Cells")
-suppDims[[3]] <- suppDims[[3]]  + ggtitle ("EGFP CTR - 5,584 Cells")
+suppDims[[2]] <- suppDims[[2]]  + ggtitle ("E2F6 OE - 4,517 Cells")
+suppDims[[3]] <- suppDims[[3]]  + ggtitle ("ZNF274 OE - 5,584 Cells")
 
 suppBottomFigure <- suppDims /
 VlnPlot(integrated, c("PDGFRA", "MKI67", "GFAP", "CD44", "MYT1L", "GRIA2", "NEUROD2", "RBFOX3"), pt.size = 0, ncol  = 4) & theme(axis.title = element_blank())
@@ -138,43 +162,44 @@ suppBottomFigure <- suppBottomFigure & theme(axis.text = element_text(size = 8),
 
 (topSup / suppBottomFigure) + plot_layout(heights = c(1,1.3)) 
 
-ggsave("figures/ExtendedDataFigure7.pdf", width = 8.5, height = 11)
+#ggsave("figures/Supp/SupFig3.pdf", width = 8.5, height = 11)
+
 
 
 ```
 
-## Determine GPC markers
+## Determine GPC markers 
 ```{r}
 
 table(integrated$label)
 
-GPCvsAll <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", test.use = "MAST", logfc.threshold = 0)
-GPCvsAll$gene <- row.names(GPCvsAll)
-GPCvsAll.sig <- GPCvsAll[GPCvsAll$p_val_adj < 0.05,]
-GPCvsAll.sig <- GPCvsAll.sig[order(GPCvsAll.sig$avg_log2FC, decreasing = T),]
-GPCvsAll.sig <- GPCvsAll.sig[,c(2:6)]
-names(GPCvsAll.sig) <- c("Log2FC GPC vs Non-GPC", "GPC pct", "Non-GPC pct", "Adj P-Vale", "Gene")
-write.xlsx(GPCvsAll.sig, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "GPC Cluster Markers")
-
-
-GPCvsAstrocyte <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Astrocytic", test.use = "MAST", logfc.threshold = 0)
-GPCvsAstrocyte$gene <- row.names(GPCvsAstrocyte)
-GPCvsAstrocyte.sig <- GPCvsAstrocyte[GPCvsAstrocyte$p_val_adj < 0.05,]
-GPCvsAstrocyte.sig <- GPCvsAstrocyte.sig[order(GPCvsAstrocyte.sig$avg_log2FC, decreasing = T),]
-
-
-GPCvsNPC <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "NPC", test.use = "MAST", logfc.threshold = 0)
-GPCvsNPC$gene <- row.names(GPCvsNPC)
-GPCvsNPC.sig <- GPCvsNPC[GPCvsNPC$p_val_adj < 0.05,]
-GPCvsNPC.sig <- GPCvsNPC.sig[order(GPCvsNPC.sig$avg_log2FC, decreasing = T),]
-
-GPCvsNeuronal <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Neuronal", test.use = "MAST", logfc.threshold = 0)
-GPCvsNeuronal$gene <- row.names(GPCvsNeuronal)
-GPCvsNeuronal.sig <- GPCvsNeuronal[GPCvsNeuronal$p_val_adj < 0.05,]
-GPCvsNeuronal.sig <- GPCvsNeuronal.sig[order(GPCvsNeuronal.sig$avg_log2FC, decreasing = T),]
-
-
-allMarkers <- FindAllMarkers(subset(integrated, subset = label == "EGFP CTR"), test.use = "MAST", logfc.threshold = 0)
+# GPCvsAll <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", test.use = "MAST", logfc.threshold = 0)
+# GPCvsAll$gene <- row.names(GPCvsAll)
+# GPCvsAll.sig <- GPCvsAll[GPCvsAll$p_val_adj < 0.05,]
+# GPCvsAll.sig <- GPCvsAll.sig[order(GPCvsAll.sig$avg_log2FC, decreasing = T),]
+# GPCvsAll.sig <- GPCvsAll.sig[,c(2:6)]
+# names(GPCvsAll.sig) <- c("Log2FC GPC vs Non-GPC", "GPC pct", "Non-GPC pct", "Adj P-Vale", "Gene")
+# #write.xlsx(GPCvsAll.sig, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "GPC Cluster Markers")
+# 
+# 
+# GPCvsAstrocyte <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Astrocytic", test.use = "MAST", logfc.threshold = 0)
+# GPCvsAstrocyte$gene <- row.names(GPCvsAstrocyte)
+# GPCvsAstrocyte.sig <- GPCvsAstrocyte[GPCvsAstrocyte$p_val_adj < 0.05,]
+# GPCvsAstrocyte.sig <- GPCvsAstrocyte.sig[order(GPCvsAstrocyte.sig$avg_log2FC, decreasing = T),]
+# 
+# 
+# GPCvsNPC <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "NPC", test.use = "MAST", logfc.threshold = 0)
+# GPCvsNPC$gene <- row.names(GPCvsNPC)
+# GPCvsNPC.sig <- GPCvsNPC[GPCvsNPC$p_val_adj < 0.05,]
+# GPCvsNPC.sig <- GPCvsNPC.sig[order(GPCvsNPC.sig$avg_log2FC, decreasing = T),]
+# 
+# GPCvsNeuronal <- FindMarkers(subset(integrated, subset = label == "EGFP CTR"), ident.1 = "GPC", ident.2 = "Neuronal", test.use = "MAST", logfc.threshold = 0)
+# GPCvsNeuronal$gene <- row.names(GPCvsNeuronal)
+# GPCvsNeuronal.sig <- GPCvsNeuronal[GPCvsNeuronal$p_val_adj < 0.05,]
+# GPCvsNeuronal.sig <- GPCvsNeuronal.sig[order(GPCvsNeuronal.sig$avg_log2FC, decreasing = T),]
+# 
+# 
+# allMarkers <- FindAllMarkers(subset(integrated, subset = label == "EGFP CTR"), test.use = "MAST", logfc.threshold = 0)
 
 
 
@@ -186,10 +211,15 @@ allMarkers <- FindAllMarkers(subset(integrated, subset = label == "EGFP CTR"), t
 ## Subset GPC population for DE analysis
 
 ```{r}
+
 GPC <- subset(integrated, idents = "GPC")
 
+#saveRDS(GPC, "RDS/GPC_OE_processed.rds")
+
+
+
 #### Over expression plots
-GPCfeaturePlots <- FeaturePlotCustom(GPC, c("PDGFRA", "E2F6", "ZNF274"), split.by = "label", sharedScale = "All")+ plot_layout(guides = "collect")
+GPCfeaturePlots <- (FeaturePlotCustom(GPC, c("PDGFRA", "E2F6", "ZNF274"), split.by = "label", sharedScale = "All") & theme(legend.position = "bottom")) + plot_layout(guides = "collect")
 GPCfeaturePlots 
 
 
@@ -198,6 +228,7 @@ frequencies <- DotPlot(GPC, group.by = "label", features = row.names(GPC))
 freq <- frequencies$data
 freq <- freq[freq$pct.exp > .1,]
 features <- unique(freq$features.plot)
+features <- features[features != "eGFP"]
 
 
 #### DE
@@ -214,8 +245,8 @@ ZNF274vsEGFP <- ZNF274vsEGFPall[ZNF274vsEGFPall$p_val_adj < 0.05 & abs(ZNF274vsE
 E2F6vsEGFP$gene <- row.names(E2F6vsEGFP)
 ZNF274vsEGFP$gene <- row.names(ZNF274vsEGFP)
 
-write.table(E2F6vsEGFP, "output/E2F6vsEGFP.txt", quote = F, row.names = F, sep = "\t")
-write.table(ZNF274vsEGFP, "output/ZNF274vsEGFP.txt", quote = F, row.names = F, sep = "\t")
+#write.table(E2F6vsEGFP, "output/E2F6vsEGFP.txt", quote = F, row.names = F, sep = "\t")
+#write.table(ZNF274vsEGFP, "output/ZNF274vsEGFP.txt", quote = F, row.names = F, sep = "\t")
 
 sup4a <- E2F6vsEGFP
 sup4b <- ZNF274vsEGFP
@@ -227,10 +258,11 @@ sup4b <- sup4b[,c(2:6)]
 names(sup4b) <- c("Log2FC_ZNF274_vs_CTR",	"Percent ZNF274",	"Percent Ctr",	"Adj_P_Val",	"External_Gene_Name")
 
 
-# Write out Extended Data Table
-write.xlsx(E2F6vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "E2F6_OE_vs_EGFP_CTR_DE", append = T)
 
-write.xlsx(ZNF274vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "ZNF274_OE_vs_EGFP_CTR_DE", append = T)
+# Write out Extended Data Table
+#write.xlsx(E2F6vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "E2F6_OE_vs_EGFP_CTR_DE", append = T)
+
+#write.xlsx(ZNF274vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", row.names = F, sheetName = "ZNF274_OE_vs_EGFP_CTR_DE", append = T)
 
 
 
@@ -240,6 +272,7 @@ write.xlsx(ZNF274vsEGFP, file = "Extended Data Tables/Extended Data Table 4 - Ad
 
 ## Venn 
 ```{r}
+
 VennAging <- list(
   "E2F6 vs EGFP" =E2F6vsEGFP$gene,
   "ZNF274 vs EGFP" = ZNF274vsEGFP$gene)
@@ -250,7 +283,122 @@ venn
 
 intersectingGenes <- merge(E2F6vsEGFP, ZNF274vsEGFP, by.x = 0, by.y = 0)
 
-table(intersectingGenes$avg_log2FC.x > 0, intersectingGenes$avg_log2FC.y > 0)
+table(intersectingGenes$avg_log2FC.x * intersectingGenes$avg_log2FC.y > 0)
+
+table(intersectingGenes$avg_log2FC.x < 0, intersectingGenes$avg_log2FC.y < 0)
+
+
+
+
+
+```
+
+
+## TF Enrichment
+```{r}
+
+#obtained from data(motifAnnotations_hgnc in RcisTarget v1.4.0)
+motifAnnotations <- read.delim("data_for_import/motifAnnotations_hgnc.txt")
+motifAnnotations <- as.data.table(motifAnnotations)
+
+#Both ranking databases available at https://resources.aertslab.org/cistarget/
+motifRankings500 <- importRankings("data_for_import/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.feather")
+motifRankings10K <- importRankings("data_for_import/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+
+options(stringsAsFactors=FALSE)
+
+
+tfOrder <- c("IKZF3", "ZNF274", "MAX", "E2F6", "BCL11A", "EZH2", "HDAC2", "STAT3", "HMGA2", "NFIB", "TEAD2", "MYC")
+
+adultRepressors <- c("IKZF3", "ZNF274", "MAX", "E2F6")
+
+fetalRepressors <- c("BCL11A", "EZH2", "HDAC2")
+fetalActivators <- c("HMGA2", "NFIB", "TEAD2", "MYC")
+
+# E2F6 Repressed Targets
+E2F6_Repressor <- TFidentify2(E2F6vsEGFP[E2F6vsEGFP$avg_log2FC < 0,]$gene, c(E2F6vsEGFP[E2F6vsEGFP$avg_log2FC > 0,]$gene, adultRepressors) , activity = "Repressor")
+
+E2F6_DotPlot <- E2F6_Repressor[E2F6_Repressor$Gene %in% c("E2F6", "ZNF274"),]
+E2F6_Repressor <- E2F6_Repressor[E2F6_Repressor$Gene == "E2F6",]
+
+# ZNF274 Repressed Targets
+ZNF274_Repressor <- TFidentify2(ZNF274vsEGFP[ZNF274vsEGFP$avg_log2FC < 0,]$gene, c(ZNF274vsEGFP[ZNF274vsEGFP$avg_log2FC > 0,]$gene, adultRepressors), activity = "Repressor")
+ZNF274_DotPlot <- ZNF274_Repressor[ZNF274_Repressor$Gene %in% c("E2F6", "ZNF274"),]
+ZNF274_Repressor <- ZNF274_Repressor[ZNF274_Repressor$Gene == "ZNF274",]
+
+
+# E2F6 Backwards Targets
+E2F6_Backwards_Targets <- TFidentify2(E2F6vsEGFP[E2F6vsEGFP$avg_log2FC > 0,]$gene, "E2F6", activity = "Activator", window = "500")
+
+# ZNF274 Backwards Targets
+ZNF274_Backwards_Targets <- TFidentify2(ZNF274vsEGFP[ZNF274vsEGFP$avg_log2FC > 0,]$gene, "ZNF274", activity = "Activator", window = "10K")
+
+geneSplit <- function(rcisTargetObject){
+  return(rcisTargetObject %>% 
+           mutate(enrichedGenes = strsplit(as.character(enrichedGenes), ";")) %>% 
+           unnest(enrichedGenes))
+}
+
+E2F6_Targets <- geneSplit(E2F6_Repressor)
+E2F6_Targets <- E2F6_Targets[!duplicated(E2F6_Targets[ , c("Gene", "enrichedGenes")]), ] 
+E2F6_Aging_Targets <- E2F6_Targets[E2F6_Targets$enrichedGenes %in% de_intersect[de_intersect$log2FoldChange < 0,]$external_gene_name,]
+
+ZNF274_Targets <- geneSplit(ZNF274_Repressor)
+ZNF274_Targets <- ZNF274_Targets[!duplicated(ZNF274_Targets[ , c("Gene", "enrichedGenes")]), ] 
+ZNF274_Aging_Targets <- ZNF274_Targets[ZNF274_Targets$enrichedGenes %in% de_intersect[de_intersect$log2FoldChange < 0,]$external_gene_name,]
+
+
+# Backwards Targets
+E2F6_Backwards_Targets <- geneSplit(E2F6_Backwards_Targets)
+E2F6_Backwards_Targets <- E2F6_Backwards_Targets[!duplicated(E2F6_Backwards_Targets[ , c("Gene", "enrichedGenes")]), ] 
+
+ZNF274_Backwards_Targets <- geneSplit(ZNF274_Backwards_Targets)
+ZNF274_Backwards_Targets <- ZNF274_Backwards_Targets[!duplicated(ZNF274_Backwards_Targets[ , c("Gene", "enrichedGenes")]), ] 
+
+
+```
+
+## Write out supp table for motif enrichment
+```{r}
+
+supTableE2F6targets <- E2F6_DotPlot
+names(supTableE2F6targets)[1:2] <- c("Motif", "TF")
+supTableE2F6targets$activity <- NULL
+supTableE2F6targets$Comparison <- "E2F6_OE_vs_EGFP_CTR"
+
+
+#write.xlsx(supTableE2F6targets, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "E2F6 OE vs EGFP CTR Motifs", row.names = F, append = T)
+
+supTableZNF274targets <- ZNF274_DotPlot
+names(supTableZNF274targets)[1:2] <- c("Motif", "TF")
+supTableZNF274targets$activity <- NULL
+supTableZNF274targets$Comparison <- "ZNF274_OE_vs_EGFP_CTR"
+
+
+#write.xlsx(supTableZNF274targets, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "ZNF274 OE vs EGFP CTR Motifs", row.names = F, append = T)
+
+
+```
+
+## Enrichment of targets in repressed vs activated genes
+```{r}
+
+##
+E2F6_Indirect_Repressed <- E2F6vsEGFP[E2F6vsEGFP$avg_log2FC < 0 & E2F6vsEGFP$gene %not in% E2F6_Targets$enrichedGenes,]
+E2F6_Indirect_Activated <- E2F6vsEGFP[E2F6vsEGFP$avg_log2FC > 0 & E2F6vsEGFP$gene %not in% E2F6_Backwards_Targets$enrichedGenes,]
+
+e2f6_fisher_direct <- data.frame("Direct" = c(nrow(E2F6_Targets), nrow(E2F6_Backwards_Targets)), "Indirect" = c(nrow(E2F6_Indirect_Repressed), nrow(E2F6_Indirect_Activated)), row.names = c("Repressed", "Activated"))
+
+fisher.test(e2f6_fisher_direct, alternative = "greater")
+
+##
+ZNF274_Indirect_Repressed <- ZNF274vsEGFP[ZNF274vsEGFP$avg_log2FC < 0 & ZNF274vsEGFP$gene %not in% ZNF274_Targets$enrichedGenes,]
+ZNF274_Indirect_Activated <- ZNF274vsEGFP[ZNF274vsEGFP$avg_log2FC > 0 & ZNF274vsEGFP$gene %not in% ZNF274_Backwards_Targets$enrichedGenes,]
+
+znf274_fisher_direct <- data.frame("Direct" = c(nrow(ZNF274_Targets), nrow(ZNF274_Backwards_Targets)), "Indirect" = c(nrow(ZNF274_Indirect_Repressed), nrow(ZNF274_Indirect_Activated)), row.names = c("Repressed", "Activated"))
+
+fisher.test(znf274_fisher_direct, alternative = "greater")
+
 
 
 
@@ -259,18 +407,17 @@ table(intersectingGenes$avg_log2FC.x > 0, intersectingGenes$avg_log2FC.y > 0)
 ## FC Heatmap
 ```{r}
 
-#####  FC Heatmap
+#####  scRNA-seq FC Heatmap
 E2F6vsEGFPall$Comparison <- "E2F6 OE vs EGFP CTR"
 ZNF274vsEGFPall$Comparison <- "ZNF274 OE vs EGFP CTR"
 
 agingHM <- rbind(E2F6vsEGFPall, ZNF274vsEGFPall)
 
-agingHMgenes <- c("CDK1", "PDGFRA", "EZH2", "HMGB1", "BCL11A", "TEAD2", "E2F6", "ZNF274", "MKI67", "PCLAF", "MIF", "CENPU", "CDKN1A", "TXNIP", 
-                  "HIST1H4C", "TOP2A", "LMNB1", "BTG1", "CTNNB1", "ZMAT3", "GADD45G", "HMGN2", "HMGB1","HMGB2", "TMPO")
-
-
+agingHMgenes <- unique(c("CDK1", "PDGFRA", "EZH2", "HMGB1", "BCL11A", "TEAD2", "E2F6", "ZNF274", "MKI67", "PCLAF", "MIF", "CENPU", "CDKN1A", "TXNIP", 
+                  "HIST1H4C", "TOP2A", "LMNB1", "BTG1", "CTNNB1", "GADD45G", "HMGN2", "HMGB1","HMGB2", "TMPO", "ETV1", "HIST1H1D", "HMGB3", "IDH2", "NUSAP1", "PEG10", "HIST2H2AC", "HIST1H1B", "HIST1H1C", "NPY", "CENPU", "HNRNPD", "ATAD2"))
 
 agingHM <- agingHM[agingHM$gene %in% agingHMgenes,]
+agingHM$gene <- factor(agingHM$gene)
 agingHM$p_val_adj <- ifelse(abs(agingHM$avg_log2FC) < 0.25, 1, agingHM$p_val_adj)
 
 
@@ -279,21 +426,227 @@ agingHM$sig <- ifelse(agingHM$p_val_adj < .0001, "****",
                                  ifelse(agingHM$p_val_adj < .01, "**", 
                                         ifelse(agingHM$p_val_adj < .05, "*", ""))))
 
-# agingHMgg <- ggplot(agingHM, aes(y = Comparison, x = gene, fill = avg_log2FC, label = sig)) + geom_tile() + scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, mid = "lightgrey") +
-#   geom_text(vjust = .7, size = 6, hjust = .5, angle = 90)  + 
-#   scale_x_discrete(expand = c(0,0)) + 
-#   scale_y_discrete(expand = c(0,0)) +
-#   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.05), axis.title = element_blank()) 
-# 
-# agingHMgg
 
-agingHMgg2 <- ggplot(agingHM, aes(x = Comparison, y = gene, fill = avg_log2FC, label = sig)) + geom_tile() + scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, mid = "lightgrey") +
+qPCRtargets <- c("ETV1", "HIST1H1D", "HMGB3", "IDH2", "NUSAP1", "PEG10")
+
+agingHM$face <- ifelse(agingHM$gene %in% qPCRtargets, "plain", "bold")
+levels(agingHM$gene)
+
+
+## Make HM Annotation
+
+oeAnnotation <- data.frame(gene = agingHMgenes)
+
+oeAnnotation$E2F6 = ifelse(oeAnnotation$gene %in% E2F6_Targets$enrichedGenes, "darkmagenta", "white")
+oeAnnotation$ZNF274 = ifelse(oeAnnotation$gene  %in% ZNF274_Targets$enrichedGenes, "orange", "white")
+
+
+oeAnnotation <- oeAnnotation[order(oeAnnotation[,2], oeAnnotation[,3]),]
+oeAnnotation$gene <- factor(oeAnnotation$gene, levels = oeAnnotation$gene)
+
+oeAnnotation <- pivot_longer(oeAnnotation, cols = c(E2F6, ZNF274))
+oeAnnotation$name <- gsub(x = oeAnnotation$name, pattern = "E2F6", replacement = "E2F6 Targets")
+oeAnnotation$name <- gsub(x = oeAnnotation$name, pattern = "ZNF274", replacement = "ZNF274 Targets")
+
+
+oeAnnotationGG <- ggplot(oeAnnotation, aes(x = name, y = gene, fill = value)) + geom_tile(colour = "black") + scale_fill_manual(values = c("darkmagenta", "orange", "white")) + scale_x_discrete(expand = c(0,0)) + scale_y_discrete(expand = c(0,0)) + NoLegend() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title = element_blank(), axis.text.y = element_blank())
+oeAnnotationGG
+
+
+agingFC <-  data.frame(gene = agingHMgenes)
+agingFC <- merge(agingFC, de_intersect_all[,c(8,3,7)], by.x = "gene", by.y = "external_gene_name", all.x = T)
+agingFC$adult <- "Adult vs Fetal GPC"
+
+agingFC$padj <- ifelse(abs(agingFC$log2FoldChange) < 1, 1, agingFC$padj)
+
+
+agingFC$sig <- ifelse(agingFC$padj < .0001, "****", 
+                          ifelse(agingFC$padj < .001, "***", 
+                                 ifelse(agingFC$padj < .01, "**", 
+                                        ifelse(agingFC$padj < .05, "*", ""))))
+
+agingFC$gene <- factor(agingFC$gene, levels = levels(oeAnnotation$gene))
+
+agingFCGG <- ggplot(agingFC, aes(y = gene, fill = log2FoldChange, x = adult, label = sig)) + geom_tile(colour = "black") + scale_fill_gradientn(colours = c("blue","lightgrey","red"), values = scales::rescale(c(min(agingFC$log2FoldChange),0,max(agingFC$log2FoldChange))), guide = "colorbar", limits=c(min(agingFC$log2FoldChange),max(agingFC$log2FoldChange))) + scale_x_discrete(expand = c(0,0)) + scale_y_discrete(expand = c(0,0)) +
+    geom_text(vjust = .7, size = 6, hjust = .5, angle = 0)   +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title = element_blank(), legend.position = "bottom", axis.text.y = element_blank()) 
+
+agingFCGG
+
+agingHM$gene <-  factor(agingHM$gene, levels = levels(oeAnnotation$gene))
+
+agingHMgg2 <- ggplot(agingHM, aes(x = Comparison, y = gene, fill = avg_log2FC, label = sig)) + geom_tile(colour = "black") + scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, mid = "lightgrey") +
   geom_text(vjust = .7, size = 6, hjust = .5, angle = 0)   + 
   scale_x_discrete(expand = c(0,0)) + 
-  scale_y_discrete(expand = c(0,0)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title = element_blank(), legend.position = "bottom") 
+  scale_y_discrete(expand = c(0,0)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title = element_blank(), legend.position = "bottom", axis.text.y = element_text(face = ifelse(levels(agingHM$gene) %in% qPCRtargets, "bold", "plain"), colour  = ifelse(levels(agingHM$gene) %in% qPCRtargets, "blue", "black"), hjust = .5))
 
 agingHMgg2
+
+
+(agingFCGG | agingHMgg2 | oeAnnotationGG) + plot_layout(widths = c(.5,1,.25))
+
+
+
+
+```
+
+
+
+# Enrichment of targets from bulk
+
+```{r}
+## Filtered lists for genes only detectable in both datasets
+# aging to consider because they're in sc
+de_intersect_sc <- de_intersect[de_intersect$external_gene_name %in% features | de_intersect$Row.names %in% features,]
+
+# All shared genes between both data sets
+highTPM_sc <- unique(features[features %in% c(highTPM$external_gene_name, row.names(highTPM))])
+highTPM_sc <- unique(features[features %in% c(highTPM$external_gene_name)])
+#saveRDS(highTPM_sc, "output/highTPM_sc.rds")
+
+bulkTargets <- read.xlsx("Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Active TFs in Fetal vs Adult")
+E2F6_bulk_targets <- bulkTargets[bulkTargets$Gene == "E2F6",]
+E2F6_bulk_targets <- geneSplit(E2F6_bulk_targets)
+E2F6_bulk_targets <- E2F6_bulk_targets[!duplicated(E2F6_bulk_targets[ , c("Gene", "enrichedGenes")]), ] 
+E2F6_bulk_targets <- E2F6_bulk_targets[E2F6_bulk_targets$enrichedGenes %in% highTPM_sc,]
+
+ZNF274_bulk_targets <- bulkTargets[bulkTargets$Gene == "ZNF274",]
+ZNF274_bulk_targets <- geneSplit(ZNF274_bulk_targets)
+ZNF274_bulk_targets <- ZNF274_bulk_targets[!duplicated(ZNF274_bulk_targets[ , c("Gene", "enrichedGenes")]), ] 
+ZNF274_bulk_targets <- ZNF274_bulk_targets[ZNF274_bulk_targets$enrichedGenes %in% highTPM_sc,]
+
+
+
+
+
+# scDE genes that are detectable in the bulk
+E2F6vsEGFP_fisher <-  E2F6vsEGFP[E2F6vsEGFP$gene  %in% c(highTPM$external_gene_name, row.names(highTPM)),]
+ZNF274vsEGFP_fisher <- ZNF274vsEGFP[ZNF274vsEGFP$gene %in% c(highTPM$external_gene_name, row.names(highTPM)),]
+
+# Repressed in OE GPCs and Adult GPCs
+E2F6vsEGFP_repressed <- E2F6vsEGFP_fisher[E2F6vsEGFP_fisher$avg_log2FC < 0,]
+Aging_repressed <- de_intersect_sc[de_intersect_sc$log2FoldChange < 0,]
+E2F6_doubleRepressed <- E2F6vsEGFP_repressed[E2F6vsEGFP_repressed$gene %in% Aging_repressed$external_gene_name,]
+
+ZNF274vsEGFP_repressed <- ZNF274vsEGFP_fisher[ZNF274vsEGFP_fisher$avg_log2FC < 0,]
+ZNF274_doubleRepressed <- ZNF274vsEGFP_repressed[ZNF274vsEGFP_repressed$gene %in% Aging_repressed$external_gene_name,]
+
+```
+
+# E2F6 scRNA and Bulk targets 
+```{r}
+# Repressed Target in scRNA
+E2F6_doubleRepressed_scTarget <- E2F6_doubleRepressed[E2F6_doubleRepressed$gene %in% E2F6_Targets$enrichedGenes,]
+
+# Repressed Target in Bulk
+E2F6_doubleRepressed_bulkTarget <- E2F6_doubleRepressed[E2F6_doubleRepressed$gene %in% E2F6_bulk_targets$enrichedGenes,]
+
+# Repressed Target in Both
+E2F6_doubleRepressed_both <- E2F6_doubleRepressed_scTarget[E2F6_doubleRepressed_scTarget$gene %in% E2F6_doubleRepressed_bulkTarget$gene,]
+
+# Repressed Tareget in scRNA but not Bulk. There are no genes repressed targets in only bulk and not scRNA here
+E2F6_doubleRepressed_scOnly <- E2F6_doubleRepressed_scTarget[E2F6_doubleRepressed_scTarget$gene %not in% E2F6_doubleRepressed_bulkTarget$gene,]
+
+e2f6_fisher_direct_bulk <- data.frame("scDirect" = c(nrow(E2F6_doubleRepressed_both), nrow(E2F6_doubleRepressed_scOnly)), "scNotDirect" = c(0, 115-109), row.names = c("bulkDirect", "bulkNotDirect"))
+
+
+fisher.test(e2f6_fisher_direct_bulk, alternative = "greater")
+
+
+e2f6Upset <- data.frame(row.names = E2F6_doubleRepressed$gene, 
+                        "Shared\nRepressed\nGenes" = T,
+                        "E2F6 OE\nGPC Targets" = E2F6_doubleRepressed$gene %in% E2F6_doubleRepressed_scTarget$gene,
+                        "Adult GPC\nTargets" = E2F6_doubleRepressed$gene %in% E2F6_doubleRepressed_bulkTarget$gene, check.names = F)
+
+
+
+
+e2f6Upsetgg <- ComplexUpset::upset(e2f6Upset, names(e2f6Upset), name='Geneset', width_ratio=0.3, keep_empty_groups = T, sort_intersections="descending", intersections = list(c("Shared\nRepressed\nGenes", "E2F6 OE\nGPC Targets"), c("Shared\nRepressed\nGenes", "Adult GPC\nTargets"), c("Shared\nRepressed\nGenes", "E2F6 OE\nGPC Targets", "Adult GPC\nTargets"), "Shared\nRepressed\nGenes"), base_annotations = list(
+        'Intersection size'=(
+            intersection_size() + theme(axis.title.y = element_blank()))))
+
+e2f6Upsetgg
+
+
+```
+
+
+# ZNF274 scRNA and Bulk Targets
+```{r}
+
+# Repressed Target in scRNA
+ZNF274_doubleRepressed_scTarget <- ZNF274_doubleRepressed[ZNF274_doubleRepressed$gene %in% ZNF274_Targets$enrichedGenes,]
+
+# Repressed Target in Bulk
+ZNF274_doubleRepressed_bulkTarget <- ZNF274_doubleRepressed[ZNF274_doubleRepressed$gene %in% ZNF274_bulk_targets$enrichedGenes,]
+
+# Repressed Target in Both
+ZNF274_doubleRepressed_both <- ZNF274_doubleRepressed_scTarget[ZNF274_doubleRepressed_scTarget$gene %in% ZNF274_doubleRepressed_bulkTarget$gene,]
+
+# Repressed Target in scRNA but not Bulk
+ZNF274_doubleRepressed_scOnly <- ZNF274_doubleRepressed_scTarget[ZNF274_doubleRepressed_scTarget$gene %not in% ZNF274_doubleRepressed_bulkTarget$gene,]
+
+# Repressed Target in Bulk but not scRNA
+ZNF274_doubleRepressed_bulkOnly <- ZNF274_doubleRepressed_bulkTarget[ZNF274_doubleRepressed_bulkTarget$gene %not in% ZNF274_doubleRepressed_scTarget$gene,]
+
+# Not targets but repressed
+ZNF274_doubleRepressed_neither <- ZNF274_doubleRepressed[ZNF274_doubleRepressed$gene %not in% c(ZNF274_doubleRepressed_scTarget$gene, ZNF274_doubleRepressed_bulkTarget$gene),]
+
+znf274_fisher_direct_bulk <- data.frame("scDirect" = c(nrow(ZNF274_doubleRepressed_both), nrow(ZNF274_doubleRepressed_scOnly)), "scNotDirect" = c(nrow(ZNF274_doubleRepressed_bulkOnly), nrow(ZNF274_doubleRepressed_neither)), row.names = c("bulkDirect", "bulkNotDirect"))
+
+fisher.test(znf274_fisher_direct_bulk, alternative = "greater")
+
+
+znf274Upset <- data.frame(row.names = ZNF274_doubleRepressed$gene, 
+                        "Shared\nRepressed\nGenes" = T,
+                        "ZNF274 OE\nGPC Targets" = ZNF274_doubleRepressed$gene %in% ZNF274_doubleRepressed_scTarget$gene,
+                        "Adult GPC\nTargets" = ZNF274_doubleRepressed$gene %in% ZNF274_doubleRepressed_bulkTarget$gene, check.names = F)
+
+
+
+
+znf274Upsetgg <- ComplexUpset::upset(znf274Upset, names(znf274Upset), name='Geneset', width_ratio=0.3, keep_empty_groups = T, intersections = list(c("Shared\nRepressed\nGenes", "ZNF274 OE\nGPC Targets"), c("Shared\nRepressed\nGenes", "Adult GPC\nTargets"), c("Shared\nRepressed\nGenes", "ZNF274 OE\nGPC Targets", "Adult GPC\nTargets"), "Shared\nRepressed\nGenes"), base_annotations = list(
+        'Intersection size'=(
+            intersection_size()
+            + theme(axis.title.y = element_blank()))))
+
+
+znf274Upsetgg
+
+e2f6Upsetgg / znf274Upsetgg
+
+```
+
+
+
+```{r}
+# E2F6 target in both
+# Of genes repressed in both, which are E2F6 targets?
+
+E2F6_Targets_pared <- E2F6_Targets[E2F6_Targets$enrichedGenes %in% highTPM$external_gene_name,]
+ZNF274_Targets_pared <- ZNF274_Targets[ZNF274_Targets$enrichedGenes %in% highTPM$external_gene_name,]
+
+E2F6_bulk_targets_pared <- E2F6_bulk_targets[E2F6_bulk_targets$enrichedGenes %in% freq$features.plot,]
+ZNF274_bulk_targets_pared <- ZNF274_bulk_targets[ZNF274_bulk_targets$enrichedGenes %in% freq$features.plot,]
+
+
+E2F6_direct_sc_bulk <- nrow(E2F6_Targets_pared[E2F6_Targets_pared$enrichedGenes %in% E2F6_bulk_targets_pared$enrichedGenes,])
+
+E2F6_direct_sc_nobulk <- nrow(E2F6_Targets_pared) - E2F6_direct_sc_bulk
+
+E2F6_direct_nosc_bulk <- nrow(E2F6_bulk_targets_pared) - E2F6_direct_sc_bulk
+
+
+
+E2F6_direct_nosc_nobulk <- unique(c(de_intersect_sc[de_intersect_sc$log2FoldChange < 0,]$external_gene_name, E2F6vsEGFP[E2F6vsEGFP$avg_log2FC < 0,]$gene))
+
+E2F6_direct_nosc_nobulk <- length(E2F6_direct_nosc_nobulk[E2F6_direct_nosc_nobulk %not in% E2F6_Targets$enrichedGenes & E2F6_direct_nosc_nobulk %not in% E2F6_bulk_targets$enrichedGenes])
+
+e2f6_fisher_direct_bulk <- data.frame("scDirect" = c(E2F6_direct_sc_bulk, E2F6_direct_sc_nobulk), "scNotDirect" = c(E2F6_direct_nosc_bulk, E2F6_direct_nosc_nobulk), row.names = c("bulkDirect", "bulkNotDirect"))
+
+fisher.test(e2f6_fisher_direct_bulk, alternative = "less")
 
 
 ```
@@ -441,13 +794,381 @@ names(supTable4d) <- c("Pathway", "Adj_-log10_P_Val", "Z_Score", "Genes", "Type"
 supTable4d <- supTable4d[order(supTable4d$`Adj_-log10_P_Val`, decreasing = T),]
 
 
-write.xlsx(supTable4c, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "E2F6 OE vs EGFP CTR IPA terms", row.names = F, append = T)
+#write.xlsx(supTable4c, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "E2F6 OE vs EGFP CTR IPA terms", row.names = F, append = T)
 
-write.xlsx(supTable4d, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "ZNF274 OE vs EGFP CTR IPA terms", row.names = F, append = T)
+#write.xlsx(supTable4d, file = "Extended Data Tables/Extended Data Table 4 - Adult Repressor scRNAseq.xlsx", sheetName = "ZNF274 OE vs EGFP CTR IPA terms", row.names = F, append = T)
 
 
 
 ```
+
+
+
+## AUCell
+```{r}
+
+genesetE2F6 <- GeneSet(E2F6_doubleRepressed_scTarget$gene, setName = "E2F6 Regulon")
+genesetZNF274 <- GeneSet(ZNF274_doubleRepressed_scTarget$gene, setName = "ZNF274 Regulon")
+
+
+geneSets <- GeneSetCollection(c(genesetE2F6,genesetZNF274))
+
+cells_AUC <- AUCell_run(as.matrix(GPC@assays$RNA@data), geneSets)
+AUC <- getAUC(cells_AUC)
+
+AUCassay <- CreateAssayObject(AUC)
+
+GPC[["AUC"]] <- AUCassay
+
+DefaultAssay(GPC) <- "AUC"
+
+aucViolins <- VlnPlot(GPC, c("E2F6 Regulon", "ZNF274 Regulon"), group.by = "label", ncol = 1, pt.size = 0, cols = c("forestgreen", "darkmagenta", "orange")) & stat_summary(fun.y = median, geom='point', size = 20, colour = "black", shape = 95) & ylab("Regulon Activity") & theme(axis.title.x = element_blank())
+
+aucViolins[[1]] <- aucViolins[[1]]  + theme(axis.text.x = element_blank())
+
+aucViolins
+
+ZNF274vsEGFP_AUC <- FindMarkers(GPC, ident.1 = "ZNF274 OE", ident.2 = "EGFP CTR", group.by = "label", test.use = "wilcox", logfc.threshold = 0)
+E2F6vsEGFP_AUC <- FindMarkers(GPC, ident.1 = "E2F6 OE", ident.2 = "EGFP CTR", group.by = "label", test.use = "wilcox", logfc.threshold = 0)
+
+ZNF274vsEGFP_AUC
+
+E2F6vsEGFP_AUC
+```
+
+## Read in CTs and organize data
+
+```{r}
+
+ctsLonger <- read.csv("data_for_import/directTargetDeltaCTs.csv")
+
+
+ctsLonger$Set <- factor(ctsLonger$Set)
+ctsLonger$Condition <- factor(ctsLonger$Condition, levels = c("GFP", "E2F6", "ZNF274"))
+
+
+
+
+
+```
+
+## Calculate Delta Delta CTs
+```{r}
+
+GFPAverages <- ctsLonger[ctsLonger$Condition == "GFP",] %>% group_by(Gene) %>% dplyr::summarize(GPFdeltaCT = mean(deltaCT))
+
+ctsLonger$deltaDeltaCT <- NA
+
+for(i in 1:nrow(ctsLonger)){
+  ctsLonger$deltaDeltaCT[i] <-  ctsLonger$deltaCT[i] - GFPAverages[GFPAverages$Gene == ctsLonger$Gene[i],]$GPFdeltaCT
+}
+
+ctsLonger$FC <- 2^-ctsLonger$deltaDeltaCT
+
+# Adjust for set effect for plotting
+ctsLonger <- ctsLonger %>% dplyr::group_by(Gene, Set) %>%
+  dplyr::mutate(setLog2FC = deltaCT[Condition == "GFP"] - deltaCT)
+
+summaryFCs <- ctsLonger %>% 
+  group_by(Condition, Gene) %>% 
+  dplyr::summarise(meanSetLog2FC = mean(setLog2FC),
+            std = sd(FC),
+            n = n())
+
+summaryFCs$SE <- summaryFCs$std / (summaryFCs$n^.5)
+
+summaryFCsPlotting <- summaryFCs[summaryFCs$Condition != "GFP",]
+
+
+
+
+
+```
+
+
+
+```{r}
+
+
+lm1 <- lm(deltaCT~Condition*Gene + Set, ctsLonger)
+
+summary(lm1)
+
+EMM <- emmeans(lm1, ~ Condition | Gene)
+
+
+EMMcont <- EMM %>% contrast("trt.vs.ctrl", ref = 1, adjust = "BH")
+
+
+lmSummary <- summary(EMMcont)
+
+lmSummary$sig <- ifelse(lmSummary$p.value < .0001, "****", 
+                        ifelse(lmSummary$p.value < .001, "***", 
+                            ifelse(lmSummary$p.value < .01, "**", 
+                                   ifelse(lmSummary$p.value < .05, "*", 
+                                          ifelse(lmSummary$p.value < .1, "", "")))))
+
+lmSummary
+
+
+```
+
+
+
+```{r}
+
+summaryFCsPlotting <- summaryFCsPlotting[order(summaryFCsPlotting$Gene, summaryFCsPlotting$Condition),]
+summaryFCsPlotting$sig <- lmSummary$sig
+
+qpcrGG <- ggplot(summaryFCsPlotting, aes(x = Gene, y = meanSetLog2FC, fill = Condition, label = sig))  + geom_errorbar(aes(ymin = meanSetLog2FC - SE, ymax = meanSetLog2FC + SE), position = position_dodge(width=0.9), width = 0.25)+ geom_col(position = "dodge") + scale_x_discrete(expand = c(0,0)) + scale_y_continuous(expand = c(0,0), limits = c(-5,0)) + theme_bw() + geom_text(size =6 , position = position_dodge2(preserve = 'single',width = 0.9), hjust = .5,
+            color = "white", aes(group = Condition), vjust = 0) + scale_fill_manual(values = c("darkmagenta", "orange")) + theme(legend.position = "bottom", axis.title.x = element_blank()) + ylab("Mean Log2 FC vs Set Matched EGFP Controls")
+
+qpcrGG
+
+
+
+```
+
+## qPCR Dot Plot Remake
+```{r}
+
+
+ggplot(ctsLonger[ctsLonger$Condition != "GFP",], aes(x = Gene, y = setLog2FC, fill = Condition)) + geom_boxplot() + theme_bw() + scale_fill_manual(values = c("darkmagenta", "orange")) + NoLegend()
+
+ggsave("Panels/validation_qPCR.pdf", height = 3, width = 2)
+
+
+```
+
+## KI67 ICC
+```{r}
+
+ki67 <- read.csv("data_for_import/KI67_Proportions.csv")
+
+
+ki67$Condition <- factor(ki67$Condition, levels = c("GFP", "Dox","E2F6", "ZNF274"))
+#ki67$Condition <- relevel(ki67$Condition, "Dox")
+ki67$Set <- factor(ki67$Set)
+
+
+
+ki67_lm <- lm(data = ki67, formula = Proportion ~ Condition + Set)
+summary(ki67_lm)
+
+ki67_EMM <- emmeans(ki67_lm,  ~Condition)
+
+ki67_summary <- pairs(ki67_EMM, adjust = "BH")
+
+ki67_summary
+
+
+
+
+ki67_plotting <- ki67 %>% group_by(Condition) %>%
+  dplyr::summarise(avg.prop = mean(Proportion), std = sd(Proportion), n = n())
+
+
+
+ki67_plotting$SE <- ki67_plotting$std / (ki67_plotting$n^.5)
+
+ki67_plotting$avg.pct <- ki67_plotting$avg.prop * 100
+ki67_plotting$SE <- ki67_plotting$SE * 100
+
+ggplot(ki67_plotting, aes(x = Condition, y = avg.pct, fill = Condition)) + geom_errorbar(aes(ymin = avg.pct - SE, ymax = avg.pct + SE), position = position_dodge(width=0.9), width = 0.25) + geom_col() + scale_x_discrete(expand = c(0,0)) + scale_y_continuous(expand = c(0,0), limits = c(0,6)) +
+  theme_bw() + scale_fill_manual(values = c("forestgreen", "navy", "darkmagenta", "orange")) + ylab("Percent KI67+") + theme(legend.position = "none")
+
+
+
+```
+
+## KI67 Dot plot remake
+```{r}
+
+ki67$Percent <- ki67$Proportion * 100
+
+ki67GG <- ggplot(ki67, aes(x = Condition, y = Percent, fill = Condition)) + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 1) + theme_bw()  + scale_fill_manual(values = c("forestgreen", "navy", "darkmagenta", "orange")) + ylim(0,6) + NoLegend()
+
+ki67GG
+
+
+```
+
+
+# bGal
+```{r}
+
+bGal <- read.csv("data_for_import/bGal.csv")
+unique(bGal$Condition)
+bGal$Condition <- mapvalues(bGal$Condition, from = unique(bGal$Condition), to = c("Dox Ctr", "E2F6 OE", "EGFP Ctr", "ZNF274 OE"))
+bGal$Condition <- factor(bGal$Condition, levels = c("EGFP Ctr", "Dox Ctr", "E2F6 OE", "ZNF274 OE"))
+
+
+#bGal <- bGal[bGal$Condition != "Dox",]
+
+lm2 <- lm(data = bGal, bGal ~Condition + Set)
+summary(lm2)
+
+EMM2 <- emmeans(lm2, ~Condition)
+
+
+bGal_summary <- pairs(EMM2, adjust = "BH")
+bGal_summary
+
+
+bGalPlotting <- bGal %>% group_by(Condition) %>%
+  dplyr::summarise(avg.pct = mean(bGal), std = sd(bGal), n = n())
+
+bGalPlotting$SE <- bGalPlotting$std / (bGalPlotting$n^.5)
+
+bGalPlotting$avg.pct <- bGalPlotting$avg.pct * 100
+bGalPlotting$SE <- bGalPlotting$SE * 100
+bGalPlotting$Condition <- factor(bGalPlotting$Condition, levels = c("EGFP Ctr", "Dox Ctr", "E2F6 OE", "ZNF274 OE"))
+
+bGalGG <- ggplot(bGalPlotting, aes(x = Condition, y = avg.pct, fill = Condition)) + geom_errorbar(aes(ymin = avg.pct - SE, ymax = avg.pct + SE), position = position_dodge(width=0.9), width = 0.25) + geom_col() + scale_x_discrete(expand = c(0,0)) + scale_y_continuous(expand = c(0,0), limits = c(0,15)) +
+  theme_bw() + scale_fill_manual(values = c("forestgreen", "navy", "darkmagenta", "orange")) + ylab("Percent β-Galactosidase+ GPCs") + theme(legend.position = "none")
+
+bGalGG
+
+#ggsave("figures/bGal.pdf")
+
+
+
+```
+
+## bGAL Dot plot remake
+```{r}
+
+bGal$Percent <- bGal$bGal * 100
+
+bGalGG <- ggplot(bGal, aes(x = Condition, y = Percent, fill = Condition)) + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 1) + theme_bw()  + scale_fill_manual(values = c("forestgreen", "navy", "darkmagenta", "orange"))  + NoLegend() + ylim(0,20)
+
+bGalGG
+
+
+```
+
+```{r}
+
+
+ki67GG | bGalGG
+
+ggsave("Panels/KI67_dotPlot.pdf", width = 8, height = 6)
+
+
+```
+
+
+## Source Data
+```{r}
+
+sdUMAP <- as.data.frame(GPC@reductions$umap@cell.embeddings)
+sdMeta <- GPC@meta.data
+
+identical(row.names(sdUMAP), row.names(sdMeta))
+
+sdUMAP$cellName <- row.names(sdUMAP)
+sdUMAP <- sdUMAP[,c(3,1,2)]
+
+sd5A <- cbind(sdUMAP, sdMeta[,c("label")])
+names(sd5A)[4] <- "Sample"
+names(sd5A)
+
+DefaultAssay(GPC) <- "RNA"
+
+sd5A  <- cbind(sd5A, FetchData(GPC, c("PDGFRA", "E2F6", "ZNF274"), slot = "data"))
+
+#write.xlsx(sd5A, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5A", row.names = F, append = T)
+
+sd5B <- data.frame(gene = unique(c(E2F6vsEGFP$gene, ZNF274vsEGFP$gene)))
+sd5B$E2F6_vs_EGFP <- ifelse(sd5B$gene %in% E2F6vsEGFP$gene, "Sig", "NS")
+sd5B$ZNF274_vs_EGFP <- ifelse(sd5B$gene %in% ZNF274vsEGFP$gene, "Sig", "NS")
+
+#write.xlsx(sd5B, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5B", row.names = F, append = T)
+
+sd5C <- e2f6Upset
+sd5C$gene <- row.names(sd5C)
+
+#write.xlsx(sd5C, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5C", row.names = F, append = T)
+
+sd5D <- znf274Upset
+sd5D$gene <- row.names(sd5D)
+
+
+#write.xlsx(sd5D, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5D", row.names = F, append = T)
+
+
+DefaultAssay(GPC) <- "AUC"
+sd5E <- FetchData(GPC, c("E2F6 Regulon", "ZNF274 Regulon"), slot = "data")
+
+sd5E <- cbind(sd5E, sdMeta[,c("label")])
+names(sd5E)[3] <- "Sample"
+sd5E$cellName <- row.names(sd5E)
+sd5E <- sd5E[,c(4,1,2,3)]
+
+#write.xlsx(sd5E, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5E", row.names = F, append = T)
+
+
+sd5F <- agingFC
+names(sd5F) <- c("Gene", "Log2FC", "FDR", "Comparison", "Significance")
+
+#write.xlsx(sd5F, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5F", row.names = F, append = T)
+  
+
+sd5G <- agingHM
+sd5G <- sd5G[,c(6,2,5,7,8)]
+names(sd5G) <- c("Gene", "Log2FC", "FDR", "Comparison", "Significance")
+
+#write.xlsx(sd5G, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5G", row.names = F, append = T)
+
+sd5H <- data.frame(gene = agingHMgenes)
+
+sd5H$E2F6_Target = ifelse(sd5H$gene %in% E2F6_Targets$enrichedGenes, "Target", "Non-Target")
+sd5H$ZNF274_Target = ifelse(sd5H$gene  %in% ZNF274_Targets$enrichedGenes, "Target", "Non-Target")
+
+#write.xlsx(sd5H, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5H", row.names = F, append = T)
+
+
+sd5I <- ctsLonger
+sd5I <- sd5I[,c(2,5,8)]
+sd5I <- as.data.frame(sd5I)
+#write.xlsx(sd5I, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5I", row.names = F, append = T)
+
+sd5I_pVal <- lmSummary
+sd5I_pVal <- sd5I_pVal[,c(1,2,7)]
+#write.xlsx(sd5I_pVal, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5I_pVal", row.names = F, append = T)
+
+sd5J <- agingGO
+sd5J <- sd5J[,c(1:4)]
+
+#write.xlsx(sd5J, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5J", row.names = F, append = T)
+
+sd5K <- ki67
+sd5K <- sd5K[,c(3,2,5)]
+
+#write.xlsx(sd5K, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5K", row.names = F, append = T)
+
+sd5K_pVal <- as.data.frame(ki67_summary)
+sd5K_pVal <- sd5K_pVal[,c(1,6)]
+#write.xlsx(sd5K_pVal, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5K_pVal", row.names = F, append = T)
+
+
+sd5L <- bGal
+sd5L <- sd5L[,c(1,2,4)]
+names(sd5L)
+
+
+#write.xlsx(sd5L, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5L", row.names = F, append = T)
+
+sd5L_pVal <- as.data.frame(bGal_summary)
+sd5L_pVal <- sd5L_pVal[,c(1,6)]
+#write.xlsx(sd5L_pVal, file = "Source Data/Source_Data_Fig5.xlsx", sheetName = "Fig5L_pVal", row.names = F, append = T)
+
+
+
+```
+
+
+
 #Session Info
 ```{r}
 

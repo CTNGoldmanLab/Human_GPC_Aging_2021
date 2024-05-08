@@ -54,11 +54,10 @@ if(file.exists(filename)){
 isoformTPM <- merge(isoformTPM, ensemblTranscriptListH, by.x = 0, by.y = "ensembl_transcript_id")
 ```
 
-### Make Isoform graph
-
-### Only protein-coding
+## Make Isoform graph
 
 ``` r
+# Only Protein Coding
 adultRepressors <- isoformTPM[isoformTPM$external_gene_name %in% c("E2F6", "MAX", "ZNF274", "IKZF3"),]
 
 adultRepressors$adultMean <- rowMeans(adultRepressors[,2:4])
@@ -110,6 +109,18 @@ isoformPlotPC
 ```
 
 ![](06_Adult_vs_Fetal_Isoform_Analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+
+## Source Data
+
+``` r
+sdS3 <- adultRepressorsPC
+sdS3 <- sdS3[,c(1,4,5,6)]
+
+names(sdS3) <- c("Transcript", "Mean TPM", "SE", "Group")
+sdS3 <- sdS3[order(sdS3$Transcript, sdS3$Group),]
+
+#write.xlsx(sdS3, file = "Source Data/Source_Data_FigS3.xlsx", sheetName = "FigS3", row.names = F)
+```
 
 ``` r
 sessionInfo()

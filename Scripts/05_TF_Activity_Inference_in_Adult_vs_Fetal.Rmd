@@ -12,7 +12,8 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
-```{r}
+```{r, message = F}
+
 source(file = "Scripts/Helper_Functions.R")
 library(ggplot2)
 library(RcisTarget)
@@ -40,7 +41,7 @@ library(igraph)
 ```
 
 
-#Load prior data
+## Load prior data
 ```{r}
 
 txi.rsem <- readRDS("RDS/txi.rsem.rds")
@@ -54,7 +55,7 @@ afTPM <- read.csv("output/afTPM.csv")
 
 ```
 
-### RCisTarget for Fetal vs Adult
+## RCisTarget for Fetal vs Adult
 
 ```{r}
 #obtained from data(motifAnnotations_hgnc in RcisTarget v1.4.0)
@@ -158,7 +159,8 @@ rcisDotPlot
 
 ```
 
-### Motif similarity Matrix
+
+## Motif similarity Matrix
 ```{r}
 
 rcisFetalRepressorMat <- rbind(rcis10KFetalRepressor, rcis500FetalRepressor)
@@ -219,8 +221,23 @@ motifDotPlot
 #ggsave(filename = "panels/motifDotPlot.pdf", motifDotPlot, height = 8, width = 9, useDingbats = F)
 
 ```
+### Supplemental Source Data
 
-### Make Signaling Figure
+```{r}
+
+sdS2 <- motifMatrix
+
+names(sdS2) <- c("Motif1", "Motif2", "Similarity")
+
+#write.xlsx(sdS2, file = "Source Data/Source_Data_FigS2.xlsx", sheetName = "FigS2", row.names = F)
+
+
+
+
+```
+
+
+## Make Signaling Figure
 ```{R, message=FALSE, warning=FALSE}
 
 tfGenes <- c(repressors, activators)
@@ -275,7 +292,7 @@ tfPlot1 <- ggplot(tfHM, aes(external_gene_name, Sample)) + geom_tile(aes(fill = 
 ```
 
 
-### Make Signaling Network
+## Make Signaling Network
 ```{r}
 fetalActivators <- c("TEAD2", "MYC", "HMGA2", "NFIB")
 fetalRepressors <- c("BCL11A", "EZH2", "HDAC2")
@@ -348,30 +365,78 @@ adultActivatorNodes <- makeNodes(adultActivatorNetwork)
 fetalRepressorNodes <- makeNodes(fetalRepressorNetwork)
 fetalActivatorNodes <- makeNodes(fetalActivatorNetwork) 
 
-#write.table(adultRepressorNetwork, "output/adultRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultRepressorNetwork, "output/adultRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultRepressorNodes, "output/adultRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultRepressorNodes, "output/adultRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultActivatorNetwork, "output/adultActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultActivatorNetwork, "output/adultActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultActivatorNodes, "output/adultActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultActivatorNodes, "output/adultActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalRepressorNetwork, "output/fetalRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalRepressorNetwork, "output/fetalRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalRepressorNodes, "output/fetalRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalRepressorNodes, "output/fetalRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalActivatorNetwork, "output/fetalActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalActivatorNetwork, "output/fetalActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalActivatorNodes, "output/fetalActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalActivatorNodes, "output/fetalActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
 
 ```
 
-### Make Sup Table 3c
+## Make Sup Table 3c
 ```{r}
 
 
 supTable3c <- rcisAll[order(rcisAll$NES, decreasing = T),]
-write.xlsx(supTable3c, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Active TFs in Fetal vs Adult", row.names = F, append = T)
+#write.xlsx(supTable3c, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Active TFs in Fetal vs Adult", row.names = F, append = T)
+
+```
+
+### Fig3 Source Data
+```{r}
+
+sd3A <- rcisGG
+
+#write.xlsx(sd3A, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3A", row.names = F)
+
+sd3B <- tfHM
+sd3B <- sd3B[,c(2:4)]
+sd3B <- pivot_wider(data = sd3B,  names_from = Sample, id_cols = external_gene_name, values_from = TPM)
+names(sd3B)[2:4] <- paste0("Adult_", names(sd3B)[2:4])
+names(sd3B)[1] <- "Gene"
+
+sd3B <- as.data.frame(sd3B)
+
+
+#write.xlsx(sd3B, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3B", row.names = F, append = T)
+
+sd3C <- tfBar[,c(8,3,4,11)]
+names(sd3C) <- c("Gene", "Log2FC", "SE", "Comparison")
+
+#write.xlsx(sd3C, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3C", row.names = F, append = T)
+
+sd3D <- fetalActivatorNetwork
+sd3D <- as.data.frame(sd3D[,1:2])
+
+#write.xlsx(sd3D, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3D", row.names = F, append = T)
+
+sd3E <- fetalRepressorNetwork
+sd3E <- as.data.frame(sd3E[,1:2])
+
+#write.xlsx(sd3E, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3E", row.names = F, append = T)
+
+sd3F <- adultActivatorNetwork
+sd3F <- as.data.frame(sd3F[,1:2])
+
+#write.xlsx(sd3F, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3F", row.names = F, append = T)
+
+sd3G <- adultRepressorNetwork
+sd3G <- as.data.frame(sd3G[,1:2])
+
+#write.xlsx(sd3G, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3G", row.names = F, append = T)
+
+
+
 
 ```
 

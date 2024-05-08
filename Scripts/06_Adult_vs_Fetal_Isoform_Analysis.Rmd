@@ -55,9 +55,9 @@ isoformTPM <- merge(isoformTPM, ensemblTranscriptListH, by.x = 0, by.y = "ensemb
 ```
 
 
-### Make Isoform graph
-### Only protein-coding
+## Make Isoform graph
 ```{r}
+# Only Protein Coding
 adultRepressors <- isoformTPM[isoformTPM$external_gene_name %in% c("E2F6", "MAX", "ZNF274", "IKZF3"),]
 
 adultRepressors$adultMean <- rowMeans(adultRepressors[,2:4])
@@ -93,6 +93,21 @@ isoformPlotPC <- ggplot(adultRepressorsPC, aes(fill = group, y = adultMean, x = 
   position=position_dodge(0.75))  + coord_flip() + theme_minimal() + scale_y_continuous(expand = c(0, 0), limits = c(0,67)) + theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(), panel.border = element_rect(fill  = NA), legend.position = "bottom", axis.title.y = element_blank()) + ylab("Isoform TPM") + geom_vline(xintercept = seq(0.5, length(unique(adultRepressors$external_transcript_name)), by = 1), color="lightgray", size=.5, alpha=.5) + scale_fill_manual(values = c("#18BA0F", "#2E30FF", "#ff2020"))
 
 isoformPlotPC
+
+
+```
+
+## Source Data
+```{r}
+
+sdS3 <- adultRepressorsPC
+sdS3 <- sdS3[,c(1,4,5,6)]
+
+names(sdS3) <- c("Transcript", "Mean TPM", "SE", "Group")
+sdS3 <- sdS3[order(sdS3$Transcript, sdS3$Group),]
+
+#write.xlsx(sdS3, file = "Source Data/Source_Data_FigS3.xlsx", sheetName = "FigS3", row.names = F)
+
 
 
 ```

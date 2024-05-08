@@ -1,7 +1,7 @@
 ---
-title: "qPCR Analysis of Adult Repressor OE in C27 hGPCs"
+title: "qPCR and ICC Analysis of Adult Repressor OE in ESC- or iSPC-derived hGPCs"
 author: "John Mariani"
-date: "03/06/23"
+date: "10/12/23"
 output: github_document
 ---
 
@@ -12,135 +12,15 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
-```{r}
+```{r, message = F}
 library(tidyverse)
-library(lsmeans)
+library(emmeans)
 library(ggplot2)
 library(patchwork)
 library(cowplot)
 library(plyr)
+library(xlsx)
 
-```
-##Read in CTs and organize data
-
-```{r}
-
-cts <- read.csv("data_for_import/overexpressionCTs.csv", stringsAsFactors = F)
-cts$Condition  <- trimws(cts$Condition, which = "both")
-
-
-rubric <- unique(cts$Condition)
-rubric
-
-names(rubric) <- c("Dox", "E2F6", "IKZF3", "MAX", "ZNF274")
-cts$Condition <- mapvalues(cts$Condition, from = rubric, names(rubric))
-
-cts <- tibble(cts)
-
-ctsLonger <- pivot_longer(cts, cols = c("MKI67", "CDK1", "CDKN1A", "CDKN2A", "IL1A", "MBP", "PDGFRA"), values_to = "deltaCT", names_to = "Gene")
-ctsLonger <- ctsLonger[!is.na(ctsLonger$deltaCT),]
-
-ctsLonger$group <- paste0(ctsLonger$Gene, "_", ctsLonger$Timepoint)
-```
-
-## Calculate Delta CTs
-```{r}
-
-DoxAverages <- data.frame(group = unique(ctsLonger$group))
-
-DoxAverages$DoxAverage <- NA
-
-for(i in DoxAverages$group){
-  tempMean <- mean(ctsLonger[ctsLonger$group == i & ctsLonger$Condition == "Dox",]$deltaCT)
-  DoxAverages[DoxAverages$group == i,]$DoxAverage <- tempMean
-}
-
-ctsLonger$deltaDeltaCT <- NA
-
-for(i in 1:nrow(ctsLonger)){
-  ctsLonger$deltaDeltaCT[i] <-  ctsLonger$deltaCT[i] - DoxAverages[DoxAverages$group == ctsLonger$group[i],]$DoxAverage
-}
-
-ctsLonger$FC <- 2^-ctsLonger$deltaDeltaCT
-ctsLonger$Timepoint <- factor(ctsLonger$Timepoint, levels = c("D3", "D7", "D10"))
-
-ctsLonger$conditionTP <- paste0(ctsLonger$Condition, "_", ctsLonger$Timepoint)
-
-
-
-summaryFCs <- ctsLonger %>% 
-  group_by(Condition, Timepoint, Gene) %>% 
-  dplyr::summarise(meanFC = mean(FC),
-            std = sd(FC),
-            n = n())
-
-
-summaryFCs2 <- summaryFCs %>%
-  group_by(Timepoint, Gene,) %>%
-  dplyr::summarise(adjustedFC = meanFC / meanFC[Condition == "Dox"],
-            temp = meanFC[Condition == "Dox"],
-            Condition = Condition,
-            std = std, 
-            n = n)
-
-summaryFCs2$std <- summaryFCs2$std / summaryFCs2$temp
-summaryFCs2$SE <- summaryFCs2$std / (summaryFCs2$n^.5)
-
-summaryFCs2$Gene <- factor(summaryFCs2$Gene, levels = c("MKI67", "CDK1", "PDGFRA", "CDKN1A", "CDKN2A", "IL1A", "MBP"))
-
-```
-
-
-##Calculate LM Significance with lsmeans
-
-```{r}
-
-for(i in 1:length(unique(ctsLonger$Gene))){
-  gene <- unique(ctsLonger$Gene)[i]
-  anovaGene <- ctsLonger[ctsLonger$Gene == gene,]
-  lm1 <- lm(deltaCT~Condition * Timepoint + Replicate, anovaGene)
-  tempSummary <- summary(lsmeans(lm1, ~ Condition | Timepoint) %>%
-                           contrast("trt.vs.ctrl", ref = 1) %>%
-                           update(by = NULL, adjust = "bh"))
-  
-  tempSummary$Condition <- gsub( " .*$", "",tempSummary$contrast)
-  tempSummary$Gene <- gene
-  tempSummary$sig <- ifelse(tempSummary$p.value < .001, "***", 
-                            ifelse(tempSummary$p.value < .01, "**", 
-                                   ifelse(tempSummary$p.value < .05, "*", 
-                                          ifelse(tempSummary$p.value < .1, "", ""))))
-  if(i == 1){
-    lmSummary <- tempSummary
-  } else {
-    lmSummary <- rbind(lmSummary, tempSummary)
-  }
-}
-
-```
-
-
-## Make Heat map
-```{r}
-
-
-lmSummary$concat <- paste(lmSummary$Condition, lmSummary$Timepoint, lmSummary$Gene, sep = "_")
-summaryFCs2$concat <- paste(summaryFCs2$Condition, summaryFCs2$Timepoint, summaryFCs2$Gene, sep = "_")
-summaryFCs2$sig <- ""
-
-summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$sig <- mapvalues(x = summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$concat, from = lmSummary$concat, to = lmSummary$sig, )
-
-summaryFCs3 <- summaryFCs2
-summaryFCs3$Gene <- factor(summaryFCs3$Gene, levels = rev(levels(summaryFCs3$Gene)))
-
-
-targetGG <- ggplot(summaryFCs3[summaryFCs2$Condition != "Dox",], aes(Timepoint, Gene)) + geom_tile(aes(fill = log2(adjustedFC)), colour = "black") +
-  facet_grid(cols = vars(Timepoint, Condition), scales = "free", space  = "free") +
-  scale_fill_gradientn(colours = c("darkblue","lightgrey","red"), values = scales::rescale(c(-.7,-.1,.7)), guide = guide_colourbar(direction = "horizontal", title = "Log2 FC vs Timepoint Dox Control", title.position = "top")) +
-  theme(panel.spacing.x = unit(0,"lines"), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "bottom", axis.title.x = element_blank()) +
-  scale_x_discrete(expand = c(0,0)) + scale_y_discrete(expand = c(0,0)) + 
-  geom_text(aes(label = sig), size = 8)
-
-targetGG
 ```
 
 ## Gene overexpression graphs
@@ -221,13 +101,13 @@ summaryFCs2$SE <- summaryFCs2$std / (summaryFCs2$n^.5)
 
 ```
 
-## Calculate statistics with lsmeans
+## Calculate statistics with emmeans
 ```{r}
 for(i in 1:length(unique(ctsLonger$Gene))){
   gene <- unique(ctsLonger$Gene)[i]
   anovaGene <- ctsLonger[ctsLonger$Gene == gene,]
   lm1 <- lm(deltaCT~Condition * Timepoint + Replicate, anovaGene)
-  tempSummary <- summary(lsmeans(lm1, ~ Condition | Timepoint) %>%
+  tempSummary <- summary(emmeans(lm1, ~ Condition | Timepoint) %>%
                            contrast("trt.vs.ctrl", ref = 1) %>%
                            update(by = NULL, adjust = "bh"))
   
@@ -274,13 +154,13 @@ E2F6 <- ggplot(summaryFCs2[summaryFCs2$Condition == "E2F6",], aes(x = Timepoint,
 
 IKZF3 <- ggplot(summaryFCs2[summaryFCs2$Condition == "IKZF3",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
   geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
-                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "forestgreen") + theme_bw() + 
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "cyan4") + theme_bw() + 
   labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_text(hjust = 0.5)) +
   scale_x_discrete(expand = c(0,0)) + ggtitle("IKZF3 Overexpression") + ylim(c(0,16))
 
 MAX <- ggplot(summaryFCs2[summaryFCs2$Condition == "MAX",], aes(x = Timepoint, y = adjustedFC, label = sig)) + 
   geom_errorbar(aes(ymin=adjustedFC, ymax=adjustedFC+SE), width=.2,
-                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "cyan4") + theme_bw() + 
+                position=position_dodge(.9)) + geom_bar(position = "dodge", stat = "summary", colour = "black", fill = "tomato4") + theme_bw() + 
   labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", axis.text.x = element_blank(), axis.title.x = element_blank(), plot.title = element_text(hjust = 0.5)) +
   scale_x_discrete(expand = c(0,0)) + ggtitle("MAX Overexpression") + ylim(c(0,16))
 
@@ -290,14 +170,319 @@ ZNF274 <- ggplot(summaryFCs2[summaryFCs2$Condition == "ZNF274",], aes(x = Timepo
   labs(y = "Fold Change") + geom_text(vjust = .4, position = position_dodge(width = .9), size = 6, angle = 0, hjust = 0) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5)) +
   scale_x_discrete(expand = c(0,0)) + ggtitle("ZNF274 Overexpression") + ylim(c(0,10))
 
-qpcrGGs <- ((E2F6 / IKZF3 / MAX / ZNF274) | targetGG) + plot_layout(widths = c(1,2))
+(E2F6 / IKZF3 / MAX / ZNF274)
 
-qpcrGGs
-
-saveRDS(qpcrGGs, "RDS/qpcrGGs.rds")
 
 ```
 
+## Remake with dots 4C with dots
+```{r}
+
+E2F6dot <- ggplot(ctsLonger[ctsLonger$Condition == "E2F6",], aes(x = Timepoint, y = adjFC)) + geom_dotplot(binaxis = "y", stackdir = "center", fill = "darkmagenta", dotsize = 3) + theme_bw() + labs(y = "Fold Change") + ylim(c(0, 11))
+
+
+
+
+E2F6dot
+
+IKZF3dot <- ggplot(ctsLonger[ctsLonger$Condition == "IKZF3",], aes(x = Timepoint, y = adjFC)) + geom_dotplot(binaxis = "y", stackdir = "center", fill = "cyan4", dotsize = 3) + theme_bw() + 
+  labs(y = "Fold Change") + ylim(c(0, 18))
+
+IKZF3dot
+
+MAXdot <- ggplot(ctsLonger[ctsLonger$Condition == "MAX",], aes(x = Timepoint, y = adjFC)) + geom_dotplot(binaxis = "y", stackdir = "center", fill = "tomato4", dotsize = 3) + theme_bw() + 
+  labs(y = "Fold Change") + ylim(c(0, 16))
+
+MAXdot
+
+ZNF274dot <- ggplot(ctsLonger[ctsLonger$Condition == "ZNF274",], aes(x = Timepoint, y = adjFC)) + geom_dotplot(binaxis = "y", stackdir = "center", fill = "orange", dotsize = 3) + theme_bw() + 
+  labs(y = "Fold Change") + ylim(c(0, 10))
+
+ZNF274dot
+
+(E2F6dot / IKZF3dot / MAXdot / ZNF274dot) 
+
+
+qpcrGGsDot <- (E2F6dot / IKZF3dot / MAXdot / ZNF274dot) & theme(axis.text = element_blank(), axis.title = element_blank())
+qpcrGGsDot
+
+ggsave("Panels/Fig4C.pdf", width = 2, height = 4)
+
+```
+
+```{r}
+
+E2F6dot <- ggplot(ctsLonger[ctsLonger$Condition == "E2F6",], aes(x = Timepoint, y = adjFC)) + geom_violin(fill = "darkmagenta") + geom_point(colour = "black", fill = "white", shape = 21) + theme_bw() + ggtitle("E2F6")
+
+
+
+
+
+```
+
+## Source Data
+```{r}
+
+sd4C <- summaryFCs2
+sd4C <- as.data.frame(sd4C[,c(1,2,3,4,6,7,9)])
+#write.xlsx(sd4C, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4C", row.names = F)
+
+
+
+sd4C_pVal <- lmSummary
+sd4C_pVal <- sd4C_pVal[,c(1,2,9,7)]
+#write.xlsx(sd4C_pVal, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4C_pVal", row.names = F, append = T)
+
+```
+
+## Read in CTs and organize data
+
+```{r}
+
+cts <- read.csv("data_for_import/overexpressionCTs.csv", stringsAsFactors = F)
+cts$Condition  <- trimws(cts$Condition, which = "both")
+
+
+rubric <- unique(cts$Condition)
+rubric
+
+names(rubric) <- c("Dox", "E2F6", "IKZF3", "MAX", "ZNF274")
+cts$Condition <- mapvalues(cts$Condition, from = rubric, names(rubric))
+
+cts <- tibble(cts)
+
+ctsLonger <- pivot_longer(cts, cols = c("MKI67", "CDK1", "CDKN1A", "CDKN2A", "IL1A", "MBP", "PDGFRA"), values_to = "deltaCT", names_to = "Gene")
+ctsLonger <- ctsLonger[!is.na(ctsLonger$deltaCT),]
+
+ctsLonger$group <- paste0(ctsLonger$Gene, "_", ctsLonger$Timepoint)
+
+```
+
+## Calculate Delta CTs
+```{r}
+
+DoxAverages <- data.frame(group = unique(ctsLonger$group))
+
+DoxAverages$DoxAverage <- NA
+
+for(i in DoxAverages$group){
+  tempMean <- mean(ctsLonger[ctsLonger$group == i & ctsLonger$Condition == "Dox",]$deltaCT)
+  DoxAverages[DoxAverages$group == i,]$DoxAverage <- tempMean
+}
+
+ctsLonger$deltaDeltaCT <- NA
+
+for(i in 1:nrow(ctsLonger)){
+  ctsLonger$deltaDeltaCT[i] <-  ctsLonger$deltaCT[i] - DoxAverages[DoxAverages$group == ctsLonger$group[i],]$DoxAverage
+}
+
+ctsLonger$FC <- 2^-ctsLonger$deltaDeltaCT
+ctsLonger$Timepoint <- factor(ctsLonger$Timepoint, levels = c("D3", "D7", "D10"))
+
+ctsLonger$conditionTP <- paste0(ctsLonger$Condition, "_", ctsLonger$Timepoint)
+
+
+
+summaryFCs <- ctsLonger %>% 
+  group_by(Condition, Timepoint, Gene) %>% 
+  dplyr::summarise(meanFC = mean(FC),
+            std = sd(FC),
+            n = n())
+
+
+summaryFCs2 <- summaryFCs %>%
+  group_by(Timepoint, Gene,) %>%
+  dplyr::summarise(adjustedFC = meanFC / meanFC[Condition == "Dox"],
+            temp = meanFC[Condition == "Dox"],
+            Condition = Condition,
+            std = std, 
+            n = n)
+
+summaryFCs2$std <- summaryFCs2$std / summaryFCs2$temp
+summaryFCs2$SE <- summaryFCs2$std / (summaryFCs2$n^.5)
+
+summaryFCs2$Gene <- factor(summaryFCs2$Gene, levels = c("MKI67", "CDK1", "PDGFRA", "CDKN1A", "CDKN2A", "IL1A", "MBP"))
+
+```
+
+
+## Calculate LM Significance with emmeans
+
+```{r}
+
+for(i in 1:length(unique(ctsLonger$Gene))){
+  gene <- unique(ctsLonger$Gene)[i]
+  anovaGene <- ctsLonger[ctsLonger$Gene == gene,]
+  lm1 <- lm(deltaCT~Condition * Timepoint + Replicate, anovaGene)
+  tempSummary <- summary(emmeans(lm1, ~ Condition | Timepoint) %>%
+                           contrast("trt.vs.ctrl", ref = 1) %>%
+                           update(by = NULL, adjust = "bh"))
+  
+  tempSummary$Condition <- gsub( " .*$", "",tempSummary$contrast)
+  tempSummary$Gene <- gene
+  tempSummary$sig <- ifelse(tempSummary$p.value < .001, "***", 
+                            ifelse(tempSummary$p.value < .01, "**", 
+                                   ifelse(tempSummary$p.value < .05, "*", 
+                                          ifelse(tempSummary$p.value < .1, "", ""))))
+  if(i == 1){
+    lmSummary <- tempSummary
+  } else {
+    lmSummary <- rbind(lmSummary, tempSummary)
+  }
+}
+
+```
+
+
+## Make Heat map
+```{r}
+
+
+lmSummary$concat <- paste(lmSummary$Condition, lmSummary$Timepoint, lmSummary$Gene, sep = "_")
+summaryFCs2$concat <- paste(summaryFCs2$Condition, summaryFCs2$Timepoint, summaryFCs2$Gene, sep = "_")
+summaryFCs2$sig <- ""
+
+summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$sig <- mapvalues(x = summaryFCs2[summaryFCs2$concat %in% lmSummary$concat,]$concat, from = lmSummary$concat, to = lmSummary$sig, )
+
+summaryFCs3 <- summaryFCs2
+summaryFCs3$Gene <- factor(summaryFCs3$Gene, levels = rev(levels(summaryFCs3$Gene)))
+
+
+targetGG <- ggplot(summaryFCs3[summaryFCs2$Condition != "Dox",], aes(Timepoint, Gene)) + geom_tile(aes(fill = log2(adjustedFC)), colour = "black") +
+  facet_grid(cols = vars(Timepoint, Condition), scales = "free", space  = "free") +
+  scale_fill_gradientn(colours = c("darkblue","lightgrey","red"), values = scales::rescale(c(-.7,-.1,.7)), guide = guide_colourbar(direction = "horizontal", title = "Log2 FC vs Timepoint Dox Control", title.position = "top")) +
+  theme(panel.spacing.x = unit(0,"lines"), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "bottom", axis.title.x = element_blank()) +
+  scale_x_discrete(expand = c(0,0)) + scale_y_discrete(expand = c(0,0)) + 
+  geom_text(aes(label = sig), size = 8)
+
+targetGG
+```
+
+## Source data
+```{r}
+
+sd4D <- summaryFCs3
+sd4D <- as.data.frame(sd4D[,c(1,2,3,5,7,8,10)])
+#write.xlsx(sd4D, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4D", row.names = F, append = T)
+
+
+sd4D_pVal <- lmSummary
+sd4D_pVal <- sd4D_pVal[,c(1,2,9,7)]
+
+#write.xlsx(sd4D_pVal, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4D_pVal", row.names = F, append = T)
+
+```
+
+
+## P16 and P21 ICC Analysis
+
+```{r}
+
+ICC <- read.csv("data_for_import/ICC_Proportions_ICC.csv")
+
+
+ICC$Condition <- factor(ICC$Condition, levels = c("EGFP", "E2F6", "IKZF3", "MAX", "ZNF274"))
+
+ICC$GFP <- factor(ICC$GFP, levels = c("+", "-"))
+ICC$Replicate <- factor(ICC$Replicate)
+
+icc_lm <- lm(data = ICC, formula = Proportion ~ Condition * GFP * Target + Replicate)
+icc_lm
+
+icc_EMM <- emmeans(icc_lm, ~Condition | GFP | Target)
+icc_EMM
+
+
+icc_EMMcont <-summary(icc_EMM %>% contrast("trt.vs.ctrl", ref = 1, adjust = "BH"))
+
+icc_EMMcont
+
+
+
+
+
+# Plotting
+
+ICC_Plotting <- ICC %>% group_by(Condition, GFP, Target) %>%
+  dplyr::summarise(avg.pct = mean(Proportion), std = sd(Proportion), n = n())
+
+ICC_Plotting$SE <- ICC_Plotting$std / (ICC_Plotting$n^.5)
+
+ICC_Plotting$avg.pct <- ICC_Plotting$avg.pct * 100
+ICC_Plotting$SE <- ICC_Plotting$SE * 100
+
+ICC_Plotting <- ICC_Plotting[order(ICC_Plotting$Target, ICC_Plotting$GFP, ICC_Plotting$Condition),]
+
+
+#
+
+
+EMM_Sig <- matrix(icc_EMMcont$p.value, nrow = 4)
+EMM_Sig <- rbind(matrix(1, nrow = 1, ncol = 4), EMM_Sig)
+
+
+
+
+ICC_Plotting$pval <- c(EMM_Sig)
+ICC_Plotting$pval <- as.numeric(ICC_Plotting$pval)
+
+ICC_Plotting$sig <- ifelse(ICC_Plotting$pval < .0001, "****", 
+                        ifelse(ICC_Plotting$pval < .001, "***", 
+                            ifelse(ICC_Plotting$pval < .01, "**", 
+                                   ifelse(ICC_Plotting$pval < .05, "*", 
+                                          ifelse(ICC_Plotting$pval < .1, "", "")))))
+
+
+
+#
+
+ggplot(ICC_Plotting , aes(x = GFP, fill = Condition, y = avg.pct, label = sig)) + geom_errorbar(aes(ymin = avg.pct - SE, ymax = avg.pct + SE), position = position_dodge(width=0.9), width = 0.25) +  geom_col(position = "dodge") + geom_text(size =6 , position = position_dodge2(preserve = 'single',width = 0.9), hjust = .5, color = "black", aes(group = Condition), vjust = 0) + theme_bw() + facet_wrap(facets = ~GFP + Target, scales = "free_x") + scale_fill_manual(values = c("forestgreen", "darkmagenta", "cyan2", "tomato4", "orange")) + scale_y_continuous(expand = c(0,0), limits = c(0,100)) + scale_x_discrete(expand = c(0,0))
+
+ggsave("figures/ICC_plots.pdf", width = 8, height = 4)
+
+
+
+```
+
+## Remake p16/p21 as Dot Plots
+```{r}
+
+ICCdot <- ICC
+ICCdot$Percent <- ICCdot$Proportion * 100
+
+ggplot(ICCdot, aes(x = Condition, y = Percent, fill = Condition)) + geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 3) + theme_bw() + ylim(0,100) + facet_wrap(facets = ~GFP + Target, scales = "free_x") + scale_fill_manual(values = c("forestgreen", "darkmagenta", "cyan2", "tomato4", "orange"))
+
+ggsave(filename = "Panels/fig4E.pdf", height = 6, width = 8)
+
+
+```
+
+
+## Source Data
+```{r}
+
+sd4E <- ICC[ICC$GFP == "+",]
+
+#write.xlsx(sd4E, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4E", row.names = F, append = T)
+
+sd4E_pVal <- icc_EMMcont[icc_EMMcont$GFP == "+",]
+
+sd4E_pVal <- sd4E_pVal[,c(1,2,3,8)]
+
+#write.xlsx(sd4E_pVal, file = "Source Data/Source_Data_Fig4.xlsx", sheetName = "Fig4E_pVal", row.names = F, append = T)
+
+
+sdS4B <- ICC[ICC$GFP == "-",]
+
+#write.xlsx(sdS4B, file = "Source Data/Source_Data_FigS4.xlsx", sheetName = "FigS4B", row.names = F, append = T)
+
+sdS4B_pVal <- icc_EMMcont[icc_EMMcont$GFP == "-",]
+sdS4B_pVal <- sdS4B_pVal[,c(1,2,3,8)]
+
+#write.xlsx(sdS4B_pVal, file = "Source Data/Source_Data_FigS4.xlsx", sheetName = "FigS4B_pVal", row.names = F, append = T)
+
+
+```
 
 
 

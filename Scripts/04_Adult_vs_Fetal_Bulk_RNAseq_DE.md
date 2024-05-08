@@ -7,218 +7,14 @@ John Mariani
 source(file = "Scripts/Helper_Functions.R")
 library(ggplot2)
 library(DESeq2)
-```
-
-    ## Loading required package: S4Vectors
-
-    ## Loading required package: stats4
-
-    ## Loading required package: BiocGenerics
-
-    ## 
-    ## Attaching package: 'BiocGenerics'
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     IQR, mad, sd, var, xtabs
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     anyDuplicated, aperm, append, as.data.frame, basename, cbind,
-    ##     colnames, dirname, do.call, duplicated, eval, evalq, Filter, Find,
-    ##     get, grep, grepl, intersect, is.unsorted, lapply, Map, mapply,
-    ##     match, mget, order, paste, pmax, pmax.int, pmin, pmin.int,
-    ##     Position, rank, rbind, Reduce, rownames, sapply, setdiff, sort,
-    ##     table, tapply, union, unique, unsplit, which.max, which.min
-
-    ## 
-    ## Attaching package: 'S4Vectors'
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     expand.grid, I, unname
-
-    ## Loading required package: IRanges
-
-    ## Loading required package: GenomicRanges
-
-    ## Loading required package: GenomeInfoDb
-
-    ## Loading required package: SummarizedExperiment
-
-    ## Loading required package: MatrixGenerics
-
-    ## Loading required package: matrixStats
-
-    ## 
-    ## Attaching package: 'MatrixGenerics'
-
-    ## The following objects are masked from 'package:matrixStats':
-    ## 
-    ##     colAlls, colAnyNAs, colAnys, colAvgsPerRowSet, colCollapse,
-    ##     colCounts, colCummaxs, colCummins, colCumprods, colCumsums,
-    ##     colDiffs, colIQRDiffs, colIQRs, colLogSumExps, colMadDiffs,
-    ##     colMads, colMaxs, colMeans2, colMedians, colMins, colOrderStats,
-    ##     colProds, colQuantiles, colRanges, colRanks, colSdDiffs, colSds,
-    ##     colSums2, colTabulates, colVarDiffs, colVars, colWeightedMads,
-    ##     colWeightedMeans, colWeightedMedians, colWeightedSds,
-    ##     colWeightedVars, rowAlls, rowAnyNAs, rowAnys, rowAvgsPerColSet,
-    ##     rowCollapse, rowCounts, rowCummaxs, rowCummins, rowCumprods,
-    ##     rowCumsums, rowDiffs, rowIQRDiffs, rowIQRs, rowLogSumExps,
-    ##     rowMadDiffs, rowMads, rowMaxs, rowMeans2, rowMedians, rowMins,
-    ##     rowOrderStats, rowProds, rowQuantiles, rowRanges, rowRanks,
-    ##     rowSdDiffs, rowSds, rowSums2, rowTabulates, rowVarDiffs, rowVars,
-    ##     rowWeightedMads, rowWeightedMeans, rowWeightedMedians,
-    ##     rowWeightedSds, rowWeightedVars
-
-    ## Loading required package: Biobase
-
-    ## Welcome to Bioconductor
-    ## 
-    ##     Vignettes contain introductory material; view with
-    ##     'browseVignettes()'. To cite Bioconductor, see
-    ##     'citation("Biobase")', and for packages 'citation("pkgname")'.
-
-    ## 
-    ## Attaching package: 'Biobase'
-
-    ## The following object is masked from 'package:MatrixGenerics':
-    ## 
-    ##     rowMedians
-
-    ## The following objects are masked from 'package:matrixStats':
-    ## 
-    ##     anyMissing, rowMedians
-
-``` r
 library(EnhancedVolcano)
-```
-
-    ## Loading required package: ggrepel
-
-``` r
 library(data.table)
-```
-
-    ## 
-    ## Attaching package: 'data.table'
-
-    ## The following object is masked from 'package:SummarizedExperiment':
-    ## 
-    ##     shift
-
-    ## The following object is masked from 'package:GenomicRanges':
-    ## 
-    ##     shift
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     shift
-
-    ## The following objects are masked from 'package:S4Vectors':
-    ## 
-    ##     first, second
-
-``` r
 library(stringr)
 library(plyr)
-```
-
-    ## 
-    ## Attaching package: 'plyr'
-
-    ## The following object is masked from 'package:matrixStats':
-    ## 
-    ##     count
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     desc
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     rename
-
-``` r
 library(dplyr)
-```
-
-    ## 
-    ## Attaching package: 'dplyr'
-
-    ## The following objects are masked from 'package:plyr':
-    ## 
-    ##     arrange, count, desc, failwith, id, mutate, rename, summarise,
-    ##     summarize
-
-    ## The following objects are masked from 'package:data.table':
-    ## 
-    ##     between, first, last
-
-    ## The following object is masked from 'package:Biobase':
-    ## 
-    ##     combine
-
-    ## The following object is masked from 'package:matrixStats':
-    ## 
-    ##     count
-
-    ## The following objects are masked from 'package:GenomicRanges':
-    ## 
-    ##     intersect, setdiff, union
-
-    ## The following object is masked from 'package:GenomeInfoDb':
-    ## 
-    ##     intersect
-
-    ## The following objects are masked from 'package:IRanges':
-    ## 
-    ##     collapse, desc, intersect, setdiff, slice, union
-
-    ## The following objects are masked from 'package:S4Vectors':
-    ## 
-    ##     first, intersect, rename, setdiff, setequal, union
-
-    ## The following objects are masked from 'package:BiocGenerics':
-    ## 
-    ##     combine, intersect, setdiff, union
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
 library(tidyr)
-```
-
-    ## 
-    ## Attaching package: 'tidyr'
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     expand
-
-``` r
 library(patchwork)
 library(limma)
-```
-
-    ## 
-    ## Attaching package: 'limma'
-
-    ## The following object is masked from 'package:DESeq2':
-    ## 
-    ##     plotMA
-
-    ## The following object is masked from 'package:BiocGenerics':
-    ## 
-    ##     plotMA
-
-``` r
 library(ggVennDiagram)
 library(UpSetR)
 library(xlsx)
@@ -226,42 +22,7 @@ library(ggfortify)
 library(igraph)
 ```
 
-    ## 
-    ## Attaching package: 'igraph'
-
-    ## The following object is masked from 'package:tidyr':
-    ## 
-    ##     crossing
-
-    ## The following objects are masked from 'package:dplyr':
-    ## 
-    ##     as_data_frame, groups, union
-
-    ## The following object is masked from 'package:GenomicRanges':
-    ## 
-    ##     union
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     union
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     union
-
-    ## The following objects are masked from 'package:BiocGenerics':
-    ## 
-    ##     normalize, path, union
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     decompose, spectrum
-
-    ## The following object is masked from 'package:base':
-    ## 
-    ##     union
-
-\#Load prior data
+## Load prior data
 
 ``` r
 txi.rsem <- readRDS("RDS/txi.rsem.rds")
@@ -270,7 +31,7 @@ sampleTableFull <- read.csv("data_for_import/sampleTableFull.csv")
 ensemblGeneListH <- read.csv("data_for_import/ensemblGeneList.csv")
 ```
 
-\##Set up Comparison
+## Set up Comparison
 
 ``` r
 txi.rsem.adult.fetal <- txi.rsem
@@ -334,6 +95,10 @@ de_adult_vs_cd140 <- de(ddsFetalAdult, c(1,0,-1,0,0), 0.01,1)
 de_intersect <- de_adult_vs_a2b5[de_adult_vs_a2b5$Row.names %in% de_adult_vs_cd140$Row.names,]
 de_adult_vs_cd140_only <- de_adult_vs_cd140[de_adult_vs_cd140$Row.names %not in% de_intersect$Row.names,]
 de_adult_vs_a2b5_only <- de_adult_vs_a2b5[de_adult_vs_a2b5$Row.names %not in% de_intersect$Row.names,]
+
+de_adult_vs_a2b5_all <- de(ddsFetalAdult, c(1,-1,0,0,0), 1,0)
+de_adult_vs_cd140_all <- de(ddsFetalAdult, c(1,0,-1,0,0), 1,0)
+de_intersect_all <- de_adult_vs_a2b5_all[de_adult_vs_a2b5_all$Row.names %in% de_adult_vs_cd140_all$Row.names,]
 ```
 
 ## Write out tables
@@ -363,19 +128,17 @@ supTable3a <- supTable3a[,-c(6:11)]
 names(supTable3a) <- c("Ensembl_ID", "Log2FC_Adult_vs_Fetal_A2B5", "Adj_P_Val_Adult_vs_Fetal_A2B5", "Log2FC_Adult_vs_Fetal_CD140a", "Adj_P_Val_Adult_vs_Fetal_CD140a", "External_Gene_Name", "Gene_Biotype", "Description")
 supTable3a <- supTable3a[order(supTable3a$Adj_P_Val_Adult_vs_Fetal_CD140a),]
 
-write.xlsx(supTable3a, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Adult vs Fetal hGPC DE", row.names = F)
+#write.xlsx(supTable3a, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Adult vs Fetal hGPC DE", row.names = F)
 
 
-write.table(de_intersect, "output/de_Adult_vs_Fetal_Intersect.txt", sep = "\t", quote = F, row.names = F)
-write.table(de_adult_vs_a2b5, "output/de_adult_vs_a2b5.txt", sep = "\t", quote = F, row.names = F)
-write.table(de_adult_vs_cd140, "output/de_adult_vs_cd140.txt", sep = "\t", quote = F, row.names = F)
+#write.table(de_intersect, "output/de_Adult_vs_Fetal_Intersect.txt", sep = "\t", quote = F, row.names = F)
+#write.table(de_intersect_all, "output/de_Adult_vs_Fetal_Intersect_all.txt", sep = "\t", quote = F, row.names = F)
+#write.table(de_adult_vs_a2b5, "output/de_adult_vs_a2b5.txt", sep = "\t", quote = F, row.names = F)
+#write.table(de_adult_vs_cd140, "output/de_adult_vs_cd140.txt", sep = "\t", quote = F, row.names = F)
 
 
 intersectAdult <- de_intersect[de_intersect$log2FoldChange > 0,]
 intersectFetal <- de_intersect[de_intersect$log2FoldChange < 0,]
-
-write.table(intersectAdult , "Adult_Enriched.txt", sep = "\t", quote = F, row.names = F)
-write.table(intersectFetal , "Fetal_Enriched.txt", sep = "\t", quote = F, row.names = F)
 ```
 
 ``` r
@@ -384,7 +147,7 @@ vstFetalAdult <- assay(varianceStabilizingTransformation(ddsFetalAdult))
 
 
 
-pcaAdultFetal <- autoplot(prcomp(t(as.matrix(vstFetalAdult))), data = sampleTableFetalAdult, colour = "group", label = F, shape = "batch", size = 3) + theme_bw()  + theme(legend.position='bottom', legend.box="vertical", legend.margin=margin()) + scale_color_manual(values = c("red", "#18BA0F", "#2E30FF")) + labs(tag = "B")
+pcaAdultFetal <- autoplot(prcomp(t(as.matrix(vstFetalAdult))), data = sampleTableFetalAdult, colour = "group", label = F, shape = "batch", size = 3, scale = T) + theme_bw()  + theme(legend.position='bottom', legend.box="vertical", legend.margin=margin()) + scale_color_manual(values = c("red", "#18BA0F", "#2E30FF")) + labs(tag = "B")
 
 #ggsave("Panels/AdultFetalPCA.pdf", pcaAdultFetal, width = 20, height = 10, device = "pdf")
 
@@ -415,7 +178,7 @@ table(intersectTest$log2FoldChange.x * intersectTest$log2FoldChange.x > 0)
     ## TRUE 
     ## 2720
 
-\##Make IPA network to output to Cytoscape for Adult vs Fetal
+## Make IPA network to output to Cytoscape for Adult vs Fetal
 
 ``` r
 IPAparse <- function(files, compNames, pval = -log10(0.001), filterTerms, ensembl, returnWhat = "Filtered"){
@@ -526,7 +289,7 @@ names(supTable3b) <- c("Pathway", "Adj_-log10_P_Val", "Z_Score", "Genes", "Type"
 supTable3b <- supTable3b[order(supTable3b$`Adj_-log10_P_Val`, decreasing = T),]
 
 
-write.xlsx(supTable3b, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Adult vs Fetal GPC IPA terms", row.names = F, append = T)
+#write.xlsx(supTable3b, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Adult vs Fetal GPC IPA terms", row.names = F, append = T)
 ```
 
 ## Make IPA Network
@@ -630,7 +393,7 @@ afTPM <- afTPM[,1:20] %>%
   pivot_longer(-c(Row.names, external_gene_name), names_to = "Sample", values_to = "TPM")
 afTPM$group <- mapvalues(afTPM$Sample,sampleTableFetalAdult$sample, gsub(x = as.character(sampleTableFetalAdult$group), pattern = "ctrl_", replacement = ""))
 afTPM$module <- mapvalues(afTPM$external_gene_name, nodesGOnetwork$id, nodesGOnetwork$module)
-write.csv(afTPM, "output/afTPM.csv", row.names = F)
+#write.csv(afTPM, "output/afTPM.csv", row.names = F)
 
 
 
@@ -692,7 +455,8 @@ m2
 ```
 
 ![](04_Adult_vs_Fetal_Bulk_RNAseq_DE_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
-\## GO graph
+
+## GO graph
 
 ``` r
 curatedPathways <- read.delim("data_for_import/CuratedAdultFetalGOterms.txt", stringsAsFactors = F)
@@ -736,6 +500,75 @@ afNetworkKeys
 
 ``` r
 #ggsave("figures/AdultFetalNetwork2.pdf", plot = afNetworkKeys, device = "pdf", units = "in", width = 10, height =11)
+```
+
+### Source Data
+
+``` r
+temp <- prcomp(t(as.matrix(vstFetalAdult)))$x
+
+sd2B <- ggplot_build(pcaAdultFetal)
+sd2B <- sd2B$data
+sd2B <- sd2B[[1]]
+sd2B$sample <- row.names(temp)
+sd2B <- sd2B[,c(11,3,4)]
+sd2B <- merge(sd2B, sampleTableFetalAdult, by.x = 1, by.y = 1)
+sd2B <- sd2B[,c(1:3,7,9)]
+
+#write.xlsx(x = sd2B, file  = "Source Data/Source_Data_Fig2.xlsx", sheetName = "Fig2B", row.names = F, append = T)
+
+
+sd2C <- data.frame(gene = unique(c(de_adult_vs_a2b5$external_gene_name, de_adult_vs_cd140$external_gene_name)))
+sd2C$Adult_vs_A2B5 <- ifelse(sd2C$gene %in% de_adult_vs_a2b5$external_gene_name, "Sig", "NS")
+sd2C$Adult_vs_CD140 <- ifelse(sd2C$gene %in% de_adult_vs_cd140$external_gene_name, "Sig", "NS")
+
+#write.xlsx(x = sd2C, file  = "Source Data/Source_Data_Fig2.xlsx", sheetName = "Fig2C", row.names = F, append = T)
+
+
+sd2D <- edgesGOnetwork
+sd2D <- sd2D[,c(1,2,5)]
+sd2D$Source <- as.character(sd2D$Source)
+sd2D$Target <- as.character(sd2D$Target)
+sd2D$type <- as.character(sd2D$type)
+
+# Redefining because xlsx hated the above for whatever reasons
+sd2D <- data.frame(Source = sd2D$Source,
+                   Target = sd2D$Target,
+                   type = sd2D$type)
+
+#write.xlsx(x = sd2D, file  = "Source Data/Source_Data_Fig2.xlsx", sheetName = "Fig2D", row.names = F, append = T)
+
+
+sd2E <- afGO
+sd2E <- sd2E[,c(1,2,3,7)]
+
+#write.xlsx(x = sd2E, file  = "Source Data/Source_Data_Fig2.xlsx", sheetName = "Fig2E", row.names = F, append = T)
+
+
+
+sd2Ftop <- afBar
+sd2Ftop <- sd2Ftop[,c(8,3,4,11)]
+names(sd2Ftop) <- c("Gene", "Log2FC", "SE", "Comparison")
+
+sd2Fbottom <- afHMorder
+sd2Fbottom <- sd2Fbottom[,2:19]
+
+sd2F <- merge(sd2Ftop, sd2Fbottom, by.x = "Gene", by.y = 0)
+names(sd2F)[5:7] <- paste0("Adult_", names(sd2F)[5:7])
+names(sd2F)
+```
+
+    ##  [1] "Gene"                "Log2FC"              "SE"                 
+    ##  [4] "Comparison"          "Adult_411"           "Adult_412"          
+    ##  [7] "Adult_414"           "fCd140_1"            "fCd140_2"           
+    ## [10] "fCd140_3"            "fP_A_Plus_1"         "fP_A_Plus_2"        
+    ## [13] "fP_A_Plus_3"         "hfCD140-1p"          "hfCD140-2p"         
+    ## [16] "hfCD140-4p"          "hfCD140-5p"          "July2014_hfCD140-1p"
+    ## [19] "July2014_hfCD140-2p" "July2014_hfCD140-3p" "July2014_hfCD140-4p"
+    ## [22] "July2014_hfCD140-5p"
+
+``` r
+#write.xlsx(x = sd2F, file  = "Source Data/Source_Data_Fig2.xlsx", sheetName = "Fig2F", row.names = F, append = T)
 ```
 
 ``` r
@@ -800,4 +633,3 @@ sessionInfo()
     ## [73] class_7.3-21           RVenn_1.1.0            tibble_3.2.1          
     ## [76] rJava_1.0-6            AnnotationDbi_1.60.2   memoise_2.0.1         
     ## [79] units_0.8-1
-≈

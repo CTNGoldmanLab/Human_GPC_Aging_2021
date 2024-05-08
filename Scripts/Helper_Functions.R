@@ -119,3 +119,159 @@ TFidentify <- function(geneList, geneFilter){
   motifEntrez <- motifEntrez[motifEntrez$Gene %in% geneFilter,] 
   return(motifEntrez)
 }
+
+
+# Modified for sc Lists
+TFidentify2 <- function(geneList, geneFilter = NULL, activity, window = "Both"){
+  if(window %in% c("Both", "500")){
+  motifRankings <- motifRankings500
+  geneList <- as.character(geneList)
+  motifs_AUC <- calcAUC(geneList, motifRankings, nCores=1)
+  motifEnrichmentTable <- addMotifAnnotation(motifs_AUC, nesThreshold=3,
+                                             motifAnnot=motifAnnotations)
+  motifEnrichmentTable_wGenes <- addSignificantGenes(motifEnrichmentTable,
+                                                     rankings=motifRankings, 
+                                                     geneSets=geneList)
+  motifTest <- motifEnrichmentTable_wGenes
+  motifTest$TF_highConf_genes <- ""
+  motifTest$TF_lowConf_genes <- ""
+  for(i in 1:nrow(motifTest)){
+    motifTest$TF_highConf_genes[i] <- TFpaste(motifTest$TF_highConf[i], F)
+    motifTest$TF_lowConf_genes[i] <- TFpaste(motifTest$TF_lowConf[i], F)
+  }
+  motifTest <- motifTest[motifTest$TF_highConf != "" | motifTest$TF_lowConf != "",]
+  for(i in 1:nrow(motifTest)){
+    motifTest$genes[i] <- paste(c(motifTest$TF_highConf_genes[i], motifTest$TF_lowConf_genes[i]), collapse = "; ")
+  }
+  motifTest$genes <- gsub("^\\s+|\\s+$", "", motifTest$genes)
+  motifTest$genes <- gsub("^\\;+|\\;+$", "", motifTest$genes)
+  entrezList <- strsplit(motifTest$genes, split = "; ")
+  motifEntrez <- data.frame()
+  for(i in 1:length(entrezList)){
+    motifEntrez <- rbind(motifEntrez,data.frame(Matrix = motifTest[i,2],Gene = entrezList[[i]], NES = motifTest[i,3], nEnrGenes = motifTest[i,7], enrichedGenes = motifTest[i,9]))
+  }
+  if(!is.null(geneFilter)){
+    motifEntrez <- motifEntrez[motifEntrez$Gene %in% geneFilter,] 
+  }
+  motifEntrez$window <- "500bp up/100bp down"
+  temp <- motifEntrez
+  }
+  if(window %in% c("10K", "Both")){
+  motifRankings <- motifRankings10K
+  geneList <- as.character(geneList)
+  motifs_AUC <- calcAUC(geneList, motifRankings, nCores=1)
+  motifEnrichmentTable <- addMotifAnnotation(motifs_AUC, nesThreshold=3,
+                                             motifAnnot=motifAnnotations)
+  motifEnrichmentTable_wGenes <- addSignificantGenes(motifEnrichmentTable,
+                                                     rankings=motifRankings, 
+                                                     geneSets=geneList)
+  motifTest <- motifEnrichmentTable_wGenes
+  motifTest$TF_highConf_genes <- ""
+  motifTest$TF_lowConf_genes <- ""
+  for(i in 1:nrow(motifTest)){
+    motifTest$TF_highConf_genes[i] <- TFpaste(motifTest$TF_highConf[i], F)
+    motifTest$TF_lowConf_genes[i] <- TFpaste(motifTest$TF_lowConf[i], F)
+  }
+  motifTest <- motifTest[motifTest$TF_highConf != "" | motifTest$TF_lowConf != "",]
+  for(i in 1:nrow(motifTest)){
+    motifTest$genes[i] <- paste(c(motifTest$TF_highConf_genes[i], motifTest$TF_lowConf_genes[i]), collapse = "; ")
+  }
+  motifTest$genes <- gsub("^\\s+|\\s+$", "", motifTest$genes)
+  motifTest$genes <- gsub("^\\;+|\\;+$", "", motifTest$genes)
+  entrezList <- strsplit(motifTest$genes, split = "; ")
+  motifEntrez <- data.frame()
+  for(i in 1:length(entrezList)){
+    motifEntrez <- rbind(motifEntrez,data.frame(Matrix = motifTest[i,2],Gene = entrezList[[i]], NES = motifTest[i,3], nEnrGenes = motifTest[i,7], enrichedGenes = motifTest[i,9]))
+  }
+  if(!is.null(geneFilter)){
+    motifEntrez <- motifEntrez[motifEntrez$Gene %in% geneFilter,] 
+  }
+  motifEntrez$window <- "10Kb up/10kb down"
+  }
+  if(window == "Both"){
+    motifEntrez <- rbind(temp, motifEntrez)
+  }
+  motifEntrez$activity <- activity
+  return(motifEntrez)
+}
+
+#### Plotting Functions
+
+DimPlotCustom <- function(seurat, group.by = "orig.ident", pt.size = 2, plotLegend = T){
+  embeddings <- as.data.frame(seurat@reductions$umap@cell.embeddings)
+  pTemp <- ggplot(data=embeddings, aes(x=UMAP_1, y = UMAP_2)) + geom_point(aes(size = 0.5))
+  yRange <- ggplot_build(pTemp)$layout$panel_scales_y[[1]]$range$range
+  xRange <- ggplot_build(pTemp)$layout$panel_scales_x[[1]]$range$range
+  embeddings$group <- seurat@meta.data[,group.by]
+  p <- ggplot(data=embeddings, aes(x=UMAP_1, y=UMAP_2)) + geom_point(aes(fill= group), size = pt.size, colour = "black", stroke = .1, shape = 21) + theme_classic() +
+    xlim(xRange) + ylim(yRange) + ylab("UMAP 2") + xlab("UMAP 1") + theme(plot.tag = element_text(size = 12), legend.position = "bottom", legend.direction = "horizontal", text = element_text(size = labelFont), legend.text = element_text(size = 6), plot.margin = unit(c(0,0,0,0), "cm"), plot.title = element_text(hjust = 0.5, size = titleFont))
+  if(plotLegend == F){
+    p <- p + theme(legend.position = "none")
+  }
+  return(p)
+}
+
+FeaturePlotCustom <- function(seurat, genes, plot = T, tag = element_blank(), plotLegend = T, cellNum = T, pt.size = .25, labelFont = 6, titleFont = 8, sharedScale = "All", nrow = NULL, ncol = NULL, split.by = NULL, sideBySide = T, color0 = "grey60", colPalette = c("dodgerblue2", "gold", "red2"), assay = "RNA"){
+  embeddings <- as.data.frame(seurat@reductions$umap@cell.embeddings)
+  if(assay == "RNA"){
+    expr <- seurat@assays$RNA@data[genes,, drop = F]
+  } else if(assay == "SCENIC"){
+    expr <- seurat@assays$SCENIC@data[genes,, drop = F]
+  }
+  scatter_col = c("grey60",colorRampPalette(c("dodgerblue2", "gold", "red2"))(max(expr)*100))
+  if(is.null(split.by)){
+    p <- lapply(genes, function(x) {ggplot2::ggplot(data=embeddings[match(names(sort(expr[x,], decreasing = F)), row.names(embeddings)),], aes(x=UMAP_1, y=UMAP_2)) + ggplot2::geom_point(aes(color= sort(expr[x,], decreasing = F)), size = pt.size) +
+        ggplot2::labs(col="Expression", title = x) + ggplot2::theme_classic() +
+        ggplot2::ylab(element_blank()) + ggplot2::xlab(element_blank()) + ggplot2::theme(plot.tag = element_text(size = 12), text = element_text(size = labelFont), legend.text = element_text(size = 6), plot.margin = unit(c(0,0,0,0), "cm"), plot.title = element_text(hjust = 0.5, size = titleFont)) +
+        if(sharedScale %in% c("All", "Gene")){
+          ggplot2::scale_colour_gradientn(colors = c(color0, colorRampPalette(colPalette)(100)), limits = c(0, max(expr)))
+        } else if(sharedScale == "None"){
+          ggplot2::scale_colour_gradientn(colors = c(color0, colorRampPalette(colPalette)(100)), limits = c(0, max(expr[x,])))
+        }})
+  } else {
+    xLimits <- c(min(embeddings$UMAP_1), max(embeddings$UMAP_1))
+    yLimits <- c(min(embeddings$UMAP_2), max(embeddings$UMAP_2))
+    splitDF <- seurat@meta.data[drop = F,,split.by]
+    splits <- unique(splitDF[,1])
+    q <- lapply(splits, function(y) {
+      lapply(genes, function(x) {
+        ggplot2::ggplot(data=embeddings[match(names(sort(expr[x,colnames(expr) %in% row.names(splitDF[splitDF[,split.by] %in% y,, drop = F])], decreasing = F)), row.names(embeddings)),], aes(x=UMAP_1, y=UMAP_2)) + ggplot2::geom_point(aes(color= sort(expr[x,colnames(expr) %in% row.names(splitDF[splitDF[,split.by] %in% y,, drop = F])], decreasing = F)), size = pt.size) +
+          ggplot2::labs(col="Expression", title = paste0(x, " - ", y)) + ggplot2::theme_classic() +
+          ggplot2::ylab(element_blank()) + ggplot2::xlab(element_blank()) + ggplot2::theme(plot.tag = element_text(size = 12), text = element_text(size = labelFont), legend.text = element_text(size = 6), plot.margin = unit(c(0,0,0,0), "cm"), plot.title = element_text(hjust = 0.5, size = titleFont)) +
+          ggplot2::xlim(xLimits) + ggplot2::ylim(yLimits) +
+          if(sharedScale == "All"){
+            ggplot2::scale_colour_gradientn(colors = c(color0, colorRampPalette(colPalette)(100)), limits = c(0, max(expr)))
+          } else if(sharedScale == "Gene"){
+            ggplot2::scale_colour_gradientn(colors = c(color0, colorRampPalette(colPalette)(100)), limits = c(0, max(expr[x,])))
+          } else if(sharedScale == "None"){
+            ggplot2::scale_colour_gradientn(colors = c(color0, colorRampPalette(colPalette)(100)))
+          }
+      })})
+    if(sideBySide == T & !is.null(split.by)){
+      p <- list()
+      loopCounter <- 1
+      for(i in 1:length(genes)){
+        for(j in 1:length(splits)) {
+          p[[loopCounter]] <-q[[j]][i]
+          loopCounter <- loopCounter + 1
+        }
+      }
+    }
+    p <- unlist(p, recursive = F)
+  }
+  if(plot == T){
+    if(is.null(ncol) & is.null(nrow) & !is.null(split.by)){
+      ncol = length(splits)
+    }
+    if(plotLegend == F){
+      patchwork::wrap_plots(p, nrow = nrow, ncol = ncol) & theme(legend.position = "none")
+    } else {
+      patchwork::wrap_plots(p, nrow = nrow, ncol = ncol)
+    }
+  } else {
+    return(p)
+  }
+}
+
+
+

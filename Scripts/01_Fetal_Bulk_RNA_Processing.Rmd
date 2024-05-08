@@ -14,7 +14,7 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 
 ## Load in Libraries
 
-```{r}
+```{r, message=F}
 library(readr)
 library(tximport)
 library(biomaRt)
@@ -24,11 +24,11 @@ source(file = "Scripts/Helper_Functions.R")
 
 ```
 
-##Read in RSEM gene output
+## Read in RSEM gene output
 
 ```{r}
 temp = list.files(path = "data_for_import/genes", pattern="genes.results")
-temp <- temp[c(1:3,10:29)]
+temp <- temp[c(1:3,15:34)]
 
 names(temp) <- substr(temp,1,nchar(temp)-19)
 
@@ -64,7 +64,7 @@ sampleTableFull <- read.csv("data_for_import/sampleTableFull.csv")
 
 ```
 
-# Preprocessing
+## Preprocessing
 ```{r}
 
 
@@ -91,13 +91,15 @@ highTPM<- lowTPMfull[apply(lowTPMfull[,1:ncol(lowTPMfull)-1], 1, max)>tpmCutoff,
 
 ```
 
-##Save data for other scripts
+## Save data for other scripts
 ```{r}
+
 saveRDS(txi.rsem, file = "RDS/txi.rsem.rds")
 saveRDS(highTPM, file = "RDS/highTPM.rds")
 
 ```
 
+## Session Info
 ```{r}
 sessionInfo()
 

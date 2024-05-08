@@ -12,218 +12,14 @@ library(ggdendro)
 
 
 library(DESeq2)
-```
-
-    ## Loading required package: S4Vectors
-
-    ## Loading required package: stats4
-
-    ## Loading required package: BiocGenerics
-
-    ## 
-    ## Attaching package: 'BiocGenerics'
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     IQR, mad, sd, var, xtabs
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     anyDuplicated, aperm, append, as.data.frame, basename, cbind,
-    ##     colnames, dirname, do.call, duplicated, eval, evalq, Filter, Find,
-    ##     get, grep, grepl, intersect, is.unsorted, lapply, Map, mapply,
-    ##     match, mget, order, paste, pmax, pmax.int, pmin, pmin.int,
-    ##     Position, rank, rbind, Reduce, rownames, sapply, setdiff, sort,
-    ##     table, tapply, union, unique, unsplit, which.max, which.min
-
-    ## 
-    ## Attaching package: 'S4Vectors'
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     expand.grid, I, unname
-
-    ## Loading required package: IRanges
-
-    ## Loading required package: GenomicRanges
-
-    ## Loading required package: GenomeInfoDb
-
-    ## Loading required package: SummarizedExperiment
-
-    ## Loading required package: MatrixGenerics
-
-    ## Loading required package: matrixStats
-
-    ## 
-    ## Attaching package: 'MatrixGenerics'
-
-    ## The following objects are masked from 'package:matrixStats':
-    ## 
-    ##     colAlls, colAnyNAs, colAnys, colAvgsPerRowSet, colCollapse,
-    ##     colCounts, colCummaxs, colCummins, colCumprods, colCumsums,
-    ##     colDiffs, colIQRDiffs, colIQRs, colLogSumExps, colMadDiffs,
-    ##     colMads, colMaxs, colMeans2, colMedians, colMins, colOrderStats,
-    ##     colProds, colQuantiles, colRanges, colRanks, colSdDiffs, colSds,
-    ##     colSums2, colTabulates, colVarDiffs, colVars, colWeightedMads,
-    ##     colWeightedMeans, colWeightedMedians, colWeightedSds,
-    ##     colWeightedVars, rowAlls, rowAnyNAs, rowAnys, rowAvgsPerColSet,
-    ##     rowCollapse, rowCounts, rowCummaxs, rowCummins, rowCumprods,
-    ##     rowCumsums, rowDiffs, rowIQRDiffs, rowIQRs, rowLogSumExps,
-    ##     rowMadDiffs, rowMads, rowMaxs, rowMeans2, rowMedians, rowMins,
-    ##     rowOrderStats, rowProds, rowQuantiles, rowRanges, rowRanks,
-    ##     rowSdDiffs, rowSds, rowSums2, rowTabulates, rowVarDiffs, rowVars,
-    ##     rowWeightedMads, rowWeightedMeans, rowWeightedMedians,
-    ##     rowWeightedSds, rowWeightedVars
-
-    ## Loading required package: Biobase
-
-    ## Welcome to Bioconductor
-    ## 
-    ##     Vignettes contain introductory material; view with
-    ##     'browseVignettes()'. To cite Bioconductor, see
-    ##     'citation("Biobase")', and for packages 'citation("pkgname")'.
-
-    ## 
-    ## Attaching package: 'Biobase'
-
-    ## The following object is masked from 'package:MatrixGenerics':
-    ## 
-    ##     rowMedians
-
-    ## The following objects are masked from 'package:matrixStats':
-    ## 
-    ##     anyMissing, rowMedians
-
-``` r
 library(EnhancedVolcano)
-```
-
-    ## Loading required package: ggrepel
-
-``` r
 library(data.table)
-```
-
-    ## 
-    ## Attaching package: 'data.table'
-
-    ## The following object is masked from 'package:SummarizedExperiment':
-    ## 
-    ##     shift
-
-    ## The following object is masked from 'package:GenomicRanges':
-    ## 
-    ##     shift
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     shift
-
-    ## The following objects are masked from 'package:S4Vectors':
-    ## 
-    ##     first, second
-
-``` r
 library(stringr)
 library(plyr)
-```
-
-    ## 
-    ## Attaching package: 'plyr'
-
-    ## The following object is masked from 'package:matrixStats':
-    ## 
-    ##     count
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     desc
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     rename
-
-``` r
 library(dplyr)
-```
-
-    ## 
-    ## Attaching package: 'dplyr'
-
-    ## The following objects are masked from 'package:plyr':
-    ## 
-    ##     arrange, count, desc, failwith, id, mutate, rename, summarise,
-    ##     summarize
-
-    ## The following objects are masked from 'package:data.table':
-    ## 
-    ##     between, first, last
-
-    ## The following object is masked from 'package:Biobase':
-    ## 
-    ##     combine
-
-    ## The following object is masked from 'package:matrixStats':
-    ## 
-    ##     count
-
-    ## The following objects are masked from 'package:GenomicRanges':
-    ## 
-    ##     intersect, setdiff, union
-
-    ## The following object is masked from 'package:GenomeInfoDb':
-    ## 
-    ##     intersect
-
-    ## The following objects are masked from 'package:IRanges':
-    ## 
-    ##     collapse, desc, intersect, setdiff, slice, union
-
-    ## The following objects are masked from 'package:S4Vectors':
-    ## 
-    ##     first, intersect, rename, setdiff, setequal, union
-
-    ## The following objects are masked from 'package:BiocGenerics':
-    ## 
-    ##     combine, intersect, setdiff, union
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
 library(tidyr)
-```
-
-    ## 
-    ## Attaching package: 'tidyr'
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     expand
-
-``` r
 library(patchwork)
 library(limma)
-```
-
-    ## 
-    ## Attaching package: 'limma'
-
-    ## The following object is masked from 'package:DESeq2':
-    ## 
-    ##     plotMA
-
-    ## The following object is masked from 'package:BiocGenerics':
-    ## 
-    ##     plotMA
-
-``` r
 library(ggVennDiagram)
 library(UpSetR)
 library(xlsx)
@@ -231,42 +27,7 @@ library(ggfortify)
 library(igraph)
 ```
 
-    ## 
-    ## Attaching package: 'igraph'
-
-    ## The following object is masked from 'package:tidyr':
-    ## 
-    ##     crossing
-
-    ## The following objects are masked from 'package:dplyr':
-    ## 
-    ##     as_data_frame, groups, union
-
-    ## The following object is masked from 'package:GenomicRanges':
-    ## 
-    ##     union
-
-    ## The following object is masked from 'package:IRanges':
-    ## 
-    ##     union
-
-    ## The following object is masked from 'package:S4Vectors':
-    ## 
-    ##     union
-
-    ## The following objects are masked from 'package:BiocGenerics':
-    ## 
-    ##     normalize, path, union
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     decompose, spectrum
-
-    ## The following object is masked from 'package:base':
-    ## 
-    ##     union
-
-\#Load prior data
+## Load prior data
 
 ``` r
 txi.rsem <- readRDS("RDS/txi.rsem.rds")
@@ -279,7 +40,7 @@ de_adult_vs_cd140 <-  read.delim("output/de_adult_vs_cd140.txt")
 afTPM <- read.csv("output/afTPM.csv")
 ```
 
-### RCisTarget for Fetal vs Adult
+## RCisTarget for Fetal vs Adult
 
 ``` r
 #obtained from data(motifAnnotations_hgnc in RcisTarget v1.4.0)
@@ -442,9 +203,9 @@ rcisDotPlot <-ggplot(rcisGG, aes(x=Gene, y=NES, fill = window, size = nEnrGenes)
 rcisDotPlot 
 ```
 
-![](05_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](05_TF_Activity_Inference_in_Adult_vs_Fetal_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
-### Motif similarity Matrix
+## Motif similarity Matrix
 
 ``` r
 rcisFetalRepressorMat <- rbind(rcis10KFetalRepressor, rcis500FetalRepressor)
@@ -479,7 +240,7 @@ clusters <- hclust(distanceMatrix, method = "ward.D2")
 plot(clusters)
 ```
 
-![](05_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](05_TF_Activity_Inference_in_Adult_vs_Fetal_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 ``` r
 for(i in row.names(tfMatrix)){
@@ -519,13 +280,23 @@ motifDotPlot
 
     ## Warning: Removed 48 rows containing missing values (`geom_point()`).
 
-![](05_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
+![](05_TF_Activity_Inference_in_Adult_vs_Fetal_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
 
 ``` r
 #ggsave(filename = "panels/motifDotPlot.pdf", motifDotPlot, height = 8, width = 9, useDingbats = F)
 ```
 
-### Make Signaling Figure
+### Supplemental Source Data
+
+``` r
+sdS2 <- motifMatrix
+
+names(sdS2) <- c("Motif1", "Motif2", "Similarity")
+
+#write.xlsx(sdS2, file = "Source Data/Source_Data_FigS2.xlsx", sheetName = "FigS2", row.names = F)
+```
+
+## Make Signaling Figure
 
 ``` r
 tfGenes <- c(repressors, activators)
@@ -566,7 +337,7 @@ tfPlot2 <- ggplot(tfBar, aes(x = external_gene_name, y = log2FoldChange, fill = 
 rcisDotPlot | tfPlot1 | tfPlot2
 ```
 
-![](05_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+![](05_TF_Activity_Inference_in_Adult_vs_Fetal_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 ``` r
 TFsignaling <- rcisDotPlot | tfPlot1 | tfPlot2
@@ -580,7 +351,7 @@ TFsignaling <- rcisDotPlot | tfPlot1 | tfPlot2
 tfPlot1 <- ggplot(tfHM, aes(external_gene_name, Sample)) + geom_tile(aes(fill = TPM)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  + scale_fill_gradientn(colours = c("#009900","#fffcbd","#ff2020")) + coord_flip()
 ```
 
-### Make Signaling Network
+## Make Signaling Network
 
 ``` r
 fetalActivators <- c("TEAD2", "MYC", "HMGA2", "NFIB")
@@ -669,28 +440,72 @@ adultActivatorNodes <- makeNodes(adultActivatorNetwork)
 fetalRepressorNodes <- makeNodes(fetalRepressorNetwork)
 fetalActivatorNodes <- makeNodes(fetalActivatorNetwork) 
 
-#write.table(adultRepressorNetwork, "output/adultRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultRepressorNetwork, "output/adultRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultRepressorNodes, "output/adultRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultRepressorNodes, "output/adultRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultActivatorNetwork, "output/adultActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultActivatorNetwork, "output/adultActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(adultActivatorNodes, "output/adultActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(adultActivatorNodes, "output/adultActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalRepressorNetwork, "output/fetalRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalRepressorNetwork, "output/fetalRepressorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalRepressorNodes, "output/fetalRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalRepressorNodes, "output/fetalRepressorNodes.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalActivatorNetwork, "output/fetalActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalActivatorNetwork, "output/fetalActivatorNetwork.txt", sep = "\t", quote = F, row.names = F)
 
-#write.table(fetalActivatorNodes, "output/fetalActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
+write.table(fetalActivatorNodes, "output/fetalActivatorNodes.txt", sep = "\t", quote = F, row.names = F)
 ```
 
-### Make Sup Table 3c
+## Make Sup Table 3c
 
 ``` r
 supTable3c <- rcisAll[order(rcisAll$NES, decreasing = T),]
-write.xlsx(supTable3c, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Active TFs in Fetal vs Adult", row.names = F, append = T)
+#write.xlsx(supTable3c, file = "Extended Data Tables/Extended Data Table 3 - Adult vs Fetal hGPC Bulk RNA-seq.xlsx", sheetName = "Active TFs in Fetal vs Adult", row.names = F, append = T)
+```
+
+### Fig3 Source Data
+
+``` r
+sd3A <- rcisGG
+
+#write.xlsx(sd3A, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3A", row.names = F)
+
+sd3B <- tfHM
+sd3B <- sd3B[,c(2:4)]
+sd3B <- pivot_wider(data = sd3B,  names_from = Sample, id_cols = external_gene_name, values_from = TPM)
+names(sd3B)[2:4] <- paste0("Adult_", names(sd3B)[2:4])
+names(sd3B)[1] <- "Gene"
+
+sd3B <- as.data.frame(sd3B)
+
+
+#write.xlsx(sd3B, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3B", row.names = F, append = T)
+
+sd3C <- tfBar[,c(8,3,4,11)]
+names(sd3C) <- c("Gene", "Log2FC", "SE", "Comparison")
+
+#write.xlsx(sd3C, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3C", row.names = F, append = T)
+
+sd3D <- fetalActivatorNetwork
+sd3D <- as.data.frame(sd3D[,1:2])
+
+#write.xlsx(sd3D, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3D", row.names = F, append = T)
+
+sd3E <- fetalRepressorNetwork
+sd3E <- as.data.frame(sd3E[,1:2])
+
+#write.xlsx(sd3E, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3E", row.names = F, append = T)
+
+sd3F <- adultActivatorNetwork
+sd3F <- as.data.frame(sd3F[,1:2])
+
+#write.xlsx(sd3F, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3F", row.names = F, append = T)
+
+sd3G <- adultRepressorNetwork
+sd3G <- as.data.frame(sd3G[,1:2])
+
+#write.xlsx(sd3G, file = "Source Data/Source_Data_Fig3.xlsx", sheetName = "Fig3G", row.names = F, append = T)
 ```
 
 ``` r

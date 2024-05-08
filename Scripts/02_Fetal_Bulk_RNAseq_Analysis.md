@@ -1,4 +1,5 @@
-Differential Expression between CD140+ and P-/A+ Fetal hGPCs
+Bulk Differential Expression between CD140+ and P-/A+ or CD140- Fetal
+hGPCs
 ================
 John Mariani
 03/06/23
@@ -472,6 +473,7 @@ names(keyvals)[keyvals == 'magenta'] <- 'CD140a-'
 names(keyvals)[keyvals == '#2E30FF'] <- 'CD140a+'
 names(keyvals)[keyvals == 'darkgrey'] <- 'N.S.'
 
+
 cd140EnrichmentVolcano <- EnhancedVolcano(de_Enrichment_all,
                                           lab = as.character(de_Enrichment_all$external_gene_name),
                                           selectLab = selectGenes,
@@ -552,7 +554,16 @@ fig1PCAgg <- ggplot(data=fig1PCA, aes_string(x="PC1", y="PC2")) + theme_bw() + t
   coord_fixed()  + guides(fill = guide_legend(title.position = "top", override.aes = list(shape = 23), order = 1), shape = guide_legend(title.position = "top")) + scale_shape_manual(values = c(22, 24)) + scale_fill_manual(values = c("#18BA0F", "magenta", "#2E30FF"), name = "Fetal GPC Population:") 
 
 
-fig1PCAgg
+figExtended1PCA <- fig1PCA
+figExtended1PCA$individual <- factor(c(1,2,3,1,2,3,4,4,5,5,6,6,7,7,8,8))
+
+figExtended1PCAgg <- ggplot(data=figExtended1PCA, aes(x=PC1, y=PC2, label = individual)) + theme_bw() + theme(legend.position = "bottom", legend.direction = "horizontal") + geom_point(size=5, aes(fill = label, shape = Batch), colour = "black") +
+  geom_text(colour = "white") +
+  xlab(paste0("PC1: ",round(attributes(fig1PCA)$percentVar[1] * 100),"% variance")) +
+  ylab(paste0("PC2: ",round(attributes(fig1PCA)$percentVar[2] * 100),"% variance")) +
+  coord_fixed()  + guides(fill = guide_legend(title.position = "top", override.aes = list(shape = 23), order = 1), shape = guide_legend(title.position = "top")) + scale_shape_manual(values = c(22, 24)) + scale_fill_manual(values = c("#18BA0F", "magenta", "#2E30FF"), name = "Fetal GPC Population:") 
+
+figExtended1PCAgg
 ```
 
 ![](02_Fetal_Bulk_RNAseq_Analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
@@ -839,14 +850,52 @@ supTable1d <- supTable1d[,c(1:5)]
 names(supTable1d) <- c("Pathway", "Adj_-log10_P_Val", "Z_Score", "Genes", "Type")
 supTable1d <- supTable1d[order(supTable1d$`Adj_-log10_P_Val`, decreasing = T),]
 
-write.xlsx(supTable1a, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "DE genes - Fetal CD140a vs A2B5", row.names = F, append = T)
+#write.xlsx(supTable1a, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "DE genes - Fetal CD140a vs A2B5", row.names = F, append = T)
 
-write.xlsx(supTable1b, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "DE genes - Fetal CD140a+ vs CD140a-", row.names = F, append = T)
+#write.xlsx(supTable1b, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "DE genes - Fetal CD140a+ vs CD140a-", row.names = F, append = T)
 
 
-write.xlsx(supTable1c, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "Fetal Cd140a vs A2B5 IPA Terms", row.names = F, append = T)
+#write.xlsx(supTable1c, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "Fetal Cd140a vs A2B5 IPA Terms", row.names = F, append = T)
 
-write.xlsx(supTable1d, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "Fetal Cd140a+ vs CD140a- IPA Terms", row.names = F, append = T)
+#write.xlsx(supTable1d, file = "Extended Data Tables/Extended Data Table 1 - Fetal Bulk RNA-seq.xlsx", sheetName = "Fetal Cd140a+ vs CD140a- IPA Terms", row.names = F, append = T)
+```
+
+## Source Data Figure 1
+
+``` r
+sd1B <- figExtended1PCA
+sd1B <- sd1B[,c(5:8,1:2)]
+#write.xlsx(sd1B, "Source Data/Source_Data_Fig1.xlsx", sheetName = "Fig1B", row.names = F, append = T)
+
+
+sd1C <- data.frame(gene = unique(c(de_Enrichment$external_gene_name, de_Cd140_vs_A2B5$external_gene_name)))
+sd1C$CD140aPos_ss_CD140aNeg <- ifelse(sd1C$gene %in% de_Enrichment$external_gene_name, "Sig", "NS")
+sd1C$CD140aPos_ss_A2B5Pos <- ifelse(sd1C$gene %in% de_Cd140_vs_A2B5$external_gene_name, "Sig", "NS")
+
+#write.xlsx(sd1C, "Source Data/Source_Data_Fig1.xlsx", sheetName = "Fig1C", row.names = F, append = T)
+
+sd1D <- fetalBar
+sd1D <- fetalBar[,c(8,11,3,4)]
+names(sd1D) <- c("Gene", "Comparison", "Log2FC", "SE")
+
+#write.xlsx(sd1D, file = "Source Data/Source_Data_Fig1.xlsx", sheetName = "Fig1D", row.names = F)
+```
+
+## Source Data Supplemental 1
+
+``` r
+sdSupp1A <- de_Cd140_vs_A2B5_all
+sdSupp1A <- sdSupp1A[,c(8,3,7)]
+names(sdSupp1A) <- c("Gene", "Log2FC", "Adj_P_Val")
+sdSupp1A <- sdSupp1A[order(sdSupp1A$Adj_P_Val, decreasing = F),]
+
+#write.xlsx(sdSupp1A, file = "Source Data/Source_Data_FigS1.xlsx", sheetName = "SuppFig1A", row.names = F, append = T)
+
+sdSupp1B <- fetalGO
+sdSupp1B <- sdSupp1B[,1:4]
+names(sd1B) <- c("Pathway", "-log10pVal", "zScore", "Comparison")
+
+#write.xlsx(sdSupp1B, file = "Source Data/Source_Data_FigS1.xlsx", sheetName = "SuppFig1B", row.names = F, append = T)
 ```
 
 ``` r
