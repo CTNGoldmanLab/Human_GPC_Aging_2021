@@ -1,3 +1,5 @@
-# R Markdown Script for analysis of Human Fetal and Adult GPCs
+# R Markdown Scripts for analysis of Human Fetal and Adult GPCs
 
-[Full R Analysis Markdown](https://github.com/JohnMariani/Human_GPC_Aging_2021/blob/master/Human_GPC_Aging_Analysis.md "Link to Analysis Markdown")
+[Link to Paper: Repression of developmental transcription factor networks triggers aging-associated gene expression in human glial progenitor cells]([https://www.nature.com/articles/s41587-023-01798-5](https://www.nature.com/articles/s41467-024-48118-2) "Linke to Article")
+
+
